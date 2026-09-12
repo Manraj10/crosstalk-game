@@ -70,7 +70,7 @@ export function Home(props: {
           <label htmlFor="name">username</label>
           <input
             id="name"
-            placeholder="Xiao"
+            placeholder="Your name"
             value={name}
             maxLength={16}
             autoComplete="nickname"
