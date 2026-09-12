@@ -1,0 +1,6438 @@
+CROSSTALK — complete source dump
+This file is a concatenation of the project for submission.
+The playable app is still the multi-file repo. Run: npm install && npm run dev
+Open http://127.0.0.1:43127
+
+========================================================================
+FILE: README.md
+========================================================================
+
+# CROSSTALK
+
+**Four phones. Four opposite alerts. Power tells oxygen to kill the pump. Oxygen says absolutely not.**
+
+A 90-second, same-table party game for 4 phones. Like *Keep Talking and Nobody Explodes*, except you cannot shout the answer at the person holding the bomb. You send them a picture.
+
+<img alt="Crosstalk" src="public/art/hero-hab.webp" width="640" />
+
+## The idea
+
+Each person types a **username** on the way in. That name is who they are — on the roster, on every ask, on the debrief. Seats are jobs, not identities:
+
+| Seat | Unique fact | Can send |
+|---|---|---|
+| **Oxygen** | Oxygen mix on each switch | Nothing. Every control. Pictures land as notices |
+| **Power** | Voltage / draw | `PUMP OFF` · `PUMP ON` |
+| **Navigation** | Storm clock · which rock cluster | `SHIELDS` **or** `SHOOT` — one is enough |
+| **Communications** | Alarm log | `SEAL PORT` · `SEAL STBD` |
+
+Every seat also sees cabin oxygen and reactor power. Those two bars are the argument. The unique facts are what you have to say out loud. **Multiplayer is not a mode** — if one screen held every readout there would be nothing to relay. The written track justification is in [`WHY-MULTIPLAYER.md`](./WHY-MULTIPLAYER.md).
+
+Power, navigation and communications can shout across the table all they like. **They have to** — at each other. The ship will not name what broke, and nobody's screen carries anyone else's number. The only thing that officially reaches oxygen is a **picture landing as a notice on their phone**, signed with the sender's username. Every picture is welded to exactly one console. Communications is the only seat that can send the leaking valve. Power is the only one who can see the reactor draw spike. Navigation is the only one who can see the storm clock. All three share one cooldown that gets shorter as the hab comes apart, so a wasted press is wasted for everybody.
+
+You do not need earplugs. People will hear the table anyway. The pictures are the channel so the game still works in a noisy room.
+
+So the game is: diagnose out loud, work out whose call it is, then fire one picture at Vega before the air runs out.
+
+Emergencies stack instead of taking turns. The leak is still open when the pump runs away. The runaway is still going when the storm is called. Late, the first valve opens again. Vega can't perceive any of it on her own. **There is still one order that survives.** Any seat that goes quiet kills the hab.
+
+Oxygen does not tap got-it. Flipping the matching switch is the reply — the sender's line goes green when the control actually moves. Everything else oxygen wants to say, they say out loud. The block on that seat is one-directional.
+
+Cabin air is not a mystery gauge. Each switch has its own oxygen number (pump, port, starboard, shields, guns). The big % is those added up, plus a leftover cabin mix for trouble that is not labeled.
+
+## Run it
+
+Requires Node 20.19+ or 22.12+.
+
+```bash
+npm install
+npm run dev
+```
+
+Open **http://127.0.0.1:43127**
+
+If the table has never played, tap **60-second briefing** first. One phone. You sit in each seat, send a picture, and feel the alerts contradict. Then open a hab.
+
+## Play with real people
+
+Only **one** machine runs the server. Everyone else joins it over the same Wi‑Fi.
+
+1. One laptop: `npm run dev`
+2. Find its LAN IP — macOS `ipconfig getifaddr en0`, Windows `ipconfig`, Linux `ip addr`
+3. Everyone opens `http://THAT_IP:43127` on their phone
+4. Everyone types a **username**. One person taps **open a hab**, reads the 4-letter code aloud, everyone else **climbs aboard**
+5. Take seats, everyone marks ready, hab lead launches. A 3-2-1, then ninety seconds.
+6. After the horn, the debrief shows who sent what and what you missed. Hab lead taps **same hab — run it again**. Swap seats. Oxygen should rotate.
+
+Empty crew seats get a slow stand-in so two or three people can still play. Four humans is the real game.
+
+Two `npm run dev` processes means two separate habs that can't see each other. Just one.
+
+Allow the firewall prompt on first run. If device-to-device traffic is blocked (common on campus and hotel Wi‑Fi), tether everything to a phone hotspot.
+
+Empty seats are covered by the sim, so you can test alone or with two.
+
+### Three house rules
+
+The software enforces the channel — oxygen's client is never sent the ship's voice, and the crew have no text input to that phone. These three are on you:
+
+- **Watch the screen, not the table.** The official order is the picture, even if you can hear people shouting.
+- Nobody hands oxygen their phone.
+- Everyone gets a turn as oxygen.
+
+## Voice and urgency
+
+The phones are not quiet. A rumble, a pulse, and a klaxon sit under the round and get worse as `chaos` climbs. Vega's glass thuds when a picture hits. Idris hears the front come in. The last fifteen seconds tick. None of that is a leak — each seat only sonifies numbers it can already see. Speech is still crew-only.
+
+The ship talks. This works with no setup — it uses the browser's built-in speech engine, and Vega's phone is never sent a speech event in the first place.
+
+For better audio (and the xAI sponsor angle), set a key **on the host machine only**:
+
+```bash
+XAI_API_KEY=xai-... npm run dev
+```
+
+The key stays server-side and is proxied through `/api/voice`, so it never ships to a phone. Check which path is live with `curl localhost:43128/api/health`. When Grok audio is used it gets a band-pass filter so it sounds like a suit radio.
+
+## Layout
+
+```
+server/game.ts       the whole simulation — air, power, storm, the 3 emergencies
+server/index.ts      socket plumbing + the voice proxy
+shared/              types and copy, imported by both sides
+src/roles/           one file per console
+src/components/      SVG instruments: air gauge, storm scope, power cells
+WHY-MULTIPLAYER.md   why this is the multiplayer track
+scripts/asymmetry.ts asserts unique facts stay on one console
+scripts/playtest.ts  headless balance harness
+scripts/playtest.ts  headless balance harness
+```
+
+## Check it still works
+
+```bash
+npm run check
+```
+
+Typecheck, lint, then the two harnesses below. Worth running before you present.
+
+### Is the asymmetry intact?
+
+```bash
+npm run asymmetry
+```
+
+Asserts the rule the whole game rests on: the ship's voice never routes to oxygen, every seated phone gets the shared air and power bars, unique facts stay welded to one console, and a signal sent from the wrong seat is refused. This is a correctness check, not a tuning one — if a unique field leaks the game quietly becomes solitaire, and that has already happened once.
+
+### Is the balance still right?
+
+```bash
+npm run playtest
+```
+
+Simulates crews at different reaction speeds, then silences each player in turn, then silences each individual call. It asserts the things the design depends on: relaying in the right order survives, no seat can be left empty, and no call is decoration.
+
+```
+=== the one path ===
+all three, sharp (1.2s)        won 8/8   air floor  17
+all three, normal (2.2s)       won 8/8   air floor   7
+all three, slow (3.6s)         won 8/8   air floor   2
+all three, sloppy (5.0s)       won 0/8   air floor   0
+all three + Vega on her gauge  won 8/8   air floor   5
+
+=== every seat is load-bearing ===
+Rook silent (no pump calls)    won 0/8   air floor   0
+Idris silent (no storm calls)  won 0/8   air floor   0
+Chen silent (no valve calls)   won 0/8   air floor   0
+nobody signals at all          won 0/8   air floor  28
+Vega alone, playing her gauge  won 0/8   air floor   0
+
+=== storm is a choice, pump-off is not ===
+only SHOOT (no shields)        won 8/8
+only SHIELDS (no shoot)        won 8/8
+storm never answered           won 0/8
+pump-off never called          won 0/8
+```
+
+Two of those rows are the interesting ones. **Vega alone** is a Vega who ignores the pad and plays her air gauge as well as anyone could — she still dies every time, because two of the three emergencies are invisible to her. And **sloppy (5.0s)** is where the cliff is: a crew that dawdles by another second and a half over the slow crew goes from 8/8 to 0/8.
+
+If you want to soften it for a demo, the dials that matter are `MISSION_SECONDS` in `shared/content.ts` and the starting air in `server/game.ts`. Lower starting air is *not* a difficulty knob — it drops the cabin below the overpressure ceiling and turns the pump runaway into free air, which inverts the whole design.
+
+========================================================================
+FILE: WHY-MULTIPLAYER.md
+========================================================================
+
+# Why the multiplayer track
+
+Crosstalk is on the multiplayer track because the game **is** a routing problem between people. A single-player build would not be a smaller version of the same idea. It would be a different game with the interesting part removed.
+
+## The mechanic only exists between phones
+
+Each seat is given one unique fact the others cannot see:
+
+| Seat | Unique fact | Official send |
+|---|---|---|
+| Oxygen | Oxygen mix on each switch | Nothing. Hands on every control. Cannot hear the ship. |
+| Power | Voltage / draw spike | `PUMP OFF` · `PUMP ON` |
+| Navigation | Rock clock and which cluster this is | `SHIELDS` **or** `SHOOT` |
+| Communications | Which valve is leaking | `SEAL PORT` · `SEAL STBD` |
+
+Cabin air and reactor power are shared on purpose so the table can argue about the same numbers. The unique facts are not. The server is what enforces that — `scripts/asymmetry.ts` fails the build if a unique field leaks into the wrong view.
+
+If one person held all four phones, or if one screen showed every readout, there would be nothing to relay. The round would become a dashboard. That is solitaire with extra chrome. The multiplayer track is the only track where "four opposite alerts" is a real constraint instead of flavor text.
+
+## Single-player collapses the fight
+
+There are two honest single-player shapes, and both kill the design:
+
+1. **You are oxygen, bots are crew.** The bots already know the answer. They send the correct picture. You tap along. That is a tutorial, not a fight.
+2. **You are crew, a bot is oxygen.** You send pictures at an automaton. The contradiction — power screaming to kill the pump while oxygen can see the air dying — never happens, because nobody is sitting in the other chair arguing back.
+
+The fun is not "press the right button in time." The fun is three people who are all correct, and one person who can act, and a channel that will only carry a picture. That needs four humans, or it is pantomime.
+
+## The harness is the proof, not the slogan
+
+`npm run playtest` drives the same ship without a browser and asserts the track choice:
+
+- A sharp or normal table that relays in the right order survives.
+- Silence power, navigation, or communications and the win rate is zero.
+- Oxygen playing her own gauge as well as anyone could, with nobody sending pictures, still dies every time. Two of the three emergencies are invisible to her.
+- Skip `PUMP OFF` and you lose. Skip both `SHIELDS` and `SHOOT` and you lose. Either storm call alone is enough — the choice is real, the call is not decoration.
+
+If a clever solo player could carry the hab, we would be on the wrong track. The harness exists so that cannot quietly become true.
+
+## Why this kind of multiplayer, not another
+
+**Not versus.** A player-controlled storm would make someone the villain. The interesting failure is a communication breakdown among people who want the same outcome.
+
+**Not one shared screen.** A TV with four widgets leaks every unique fact into the room. Four phones exist so the server can refuse to merge the views.
+
+**Not online matchmaking.** The shouting *is* the content. Same table, same Wi‑Fi, usernames on the pictures. No accounts, no lobby browser, no chat box into oxygen. The software only has to enforce the channel; the table does the rest.
+
+**Not "add multiplayer later."** Role-locked signals, per-sender acks, speech that never routes to oxygen, and one shared cooldown are the product. They are also the systems work the multiplayer track is supposed to show: one authoritative ship, four different slices of it, and a client that cannot cheat the other seats by asking nicely.
+
+## What we gave up
+
+A single-player campaign would have been easier to demo alone and easier to balance. We already have stand-ins so two people can test. That is a scaffold, not the game. Four humans is the real round, and the playtest says any seat that goes quiet kills the hab.
+
+That is the track choice: multiplayer because the information cannot live in one head.
+
+========================================================================
+FILE: PITCH.md
+========================================================================
+
+# 3-minute pitch
+
+The multiplayer-track writeup is in [`WHY-MULTIPLAYER.md`](./WHY-MULTIPLAYER.md). Use it if a judge asks why this is not a single-player console.
+
+## The one-liner
+
+> **Keep Talking and Nobody Explodes — except power tells oxygen to kill the pump, oxygen says absolutely not, and the only order that counts is a picture slamming the glass.**
+
+Use that first. Every judge knows the reference, and it does 80% of the explaining for free.
+
+## 0:00–0:25 — the hook
+
+> Four of us are on a Mars hab in a dust storm. Ninety seconds to get through it.
+>
+> Three of us can see exactly what's going wrong. **One of us has the only hands on the ship — and she can't hear a single thing we say.**
+>
+> That's the whole game. Everything else is us trying to get one idea into her head before the air runs out.
+
+Don't explain roles yet. Don't explain systems. Stop talking and demo.
+
+## 0:25–1:40 — the live beat
+
+Get three phones on camera. **Never show four consoles at once** — it reads as noise.
+
+Show **Vega's screen** and **Rook's screen** side by side, and narrate one emergency:
+
+1. The plant gets loud. The ship says *nothing useful* — just "the plant is getting loud."
+2. Point at Vega's screen: air climbing past 90. "She is the only one who can see that number. She has to shout it."
+3. Point at Rook's screen: draw spiking. "He is the only one who can see that. He has to shout it."
+4. "I can't tell her. I get **one** icon, and PUMP OFF is the only one my console has." — press it.
+5. Icon lands on Vega's glass, flashing, her phone buzzes. She kills the pump — and her acknowledge turns my line green. Nobody else saw that ack. They have to ask.
+
+That's your demo. One emergency, start to finish, in about 20 seconds of real play. Then say:
+
+> Three of those happen in ninety seconds. Nobody at this table has ever won it quietly.
+
+## 1:40–2:20 — why it's not just chaos
+
+> Party games get chaotic by giving you too many buttons. We got chaotic by making the information asymmetric.
+>
+> Vega has every control and one number. Rook has the power reading. Idris has the storm clock. Chen has the alarm log. **Nobody can see anyone else's screen, the ship will not name what broke, and the one person who can act is cut off from all of it.**
+>
+> So the failure mode isn't fumbling. It's a real communication breakdown — three people shouting the right answer at someone who physically cannot receive it.
+
+And the line that lands with judges who build things:
+
+> Every icon is locked to one person's console. Chen is the only human alive who can tell Vega which valve is bleeding. There is exactly one order that gets you through ninety seconds, and we have a harness that proves it: silence any one of the four of us and the win rate is zero. **There are no passengers in this game.**
+
+If you have 10 spare seconds, the accessibility line:
+
+> Vega's constraint is modelled on a real one. Playing her is the closest most people get to being the person in the room who everyone assumes just heard that.
+
+## 2:20–2:50 — build + sponsor
+
+> Mobile web PWA, no installs — everyone joins by pointing a phone at a URL. Node and Socket.io holding one shared ship state, each phone rendering a different slice of it.
+>
+> The ship's voice is text-to-speech, and the server proxies xAI's voice API when a key is present — the astronaut you just heard interrupting us is Grok, and the key never leaves the host.
+>
+> Failures are scripted-but-randomised, so it's different every round and it can't wander off script on stage.
+
+## 2:50–3:00 — the close
+
+> It's ninety seconds. Four phones. Who wants to be Vega?
+
+Ending on an invitation gets judges out of their chairs, which is worth more than another slide.
+
+---
+
+# Demo logistics
+
+**Show 3 roles live, mention the 4th.** Four people crowding phones does not film.
+
+Casting:
+- **You are Rook.** The pump runaway is the clearest beat to narrate, and `PUMP OFF` is on your console and nobody else's.
+- **A friend is Vega.** When you press PUMP OFF a picture of the dead pump slams their entire phone. That hit is the pitch. You do not need earplugs.
+- **One judge or teammate is Chen** on the alarm log, if you want a third phone — hand them the valve leak and let them discover that only they can call it.
+
+Before you present:
+- Every phone on the same hotspot, not venue Wi‑Fi.
+- One laptop runs the server. Confirm `curl localhost:43128/api/health` first.
+- Volume up on the crew phones. Vega is watching the glass.
+- Have the round already in the lobby with seats claimed, so you launch on the first sentence.
+- Refresh gives you a new round in about two seconds if a demo goes wrong.
+
+**If the live demo dies:** switch to the hab monitor spectator view on the laptop and talk through the alarm log. It shows air, power, storm and every alarm in one screen.
+
+# Questions you will get
+
+**"Isn't this just Spaceteam?"**
+Spaceteam is a bandwidth problem — too many instructions, too little time. This is a *routing* problem. The person who can act can't perceive, so you have to translate, not just shout faster.
+
+**"Do you need the accessibility angle?"**
+It's the reason the mechanic is interesting rather than arbitrary, and it's the reason people rotate seats. Lead with the game, land the point at the end.
+
+**"What if nobody has phones?"**
+Any browser works. Two laptops and a tablet are fine.
+
+**"Did you use an LLM to generate the failures?"**
+Deliberately not. Scripted-but-randomised, so it's demo-safe. The LLM is the astronaut's voice, which is where it actually adds atmosphere.
+
+========================================================================
+FILE: package.json
+========================================================================
+
+{
+  "name": "crosstalk",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n ship,ui -c yellow,cyan \"tsx watch server/index.ts\" \"vite\"",
+    "dev:server": "tsx watch server/index.ts",
+    "dev:client": "vite",
+    "build": "tsc -b && vite build",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc -b",
+    "playtest": "tsx scripts/playtest.ts",
+    "asymmetry": "tsx scripts/asymmetry.ts",
+    "check": "npm run typecheck && npm run lint && npm run asymmetry && npm run playtest",
+    "lint": "oxlint"
+  },
+  "dependencies": {
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
+    "concurrently": "^10.0.5",
+    "oxlint": "^1.81.0",
+    "tsx": "^4.23.13",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  }
+}
+
+========================================================================
+FILE: index.html
+========================================================================
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/art/icon-192.png" />
+    <link rel="apple-touch-icon" href="/art/icon-192.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <meta name="theme-color" content="#0d0906" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta
+      name="description"
+      content="Four astronauts, one dust storm, ninety seconds. Three of you can see what is wrong. One of you has the controls and cannot hear a word."
+    />
+    <title>CROSSTALK — she can't hear you</title>
+    <link
+      rel="preconnect"
+      href="https://fonts.gstatic.com"
+      crossorigin
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
+========================================================================
+FILE: vite.config.ts
+========================================================================
+
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vite'
+
+const root = path.dirname(fileURLToPath(import.meta.url))
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@shared': path.resolve(root, 'shared'),
+    },
+  },
+  server: {
+    host: true,
+    port: 43127,
+    strictPort: true,
+    allowedHosts: true,
+    proxy: {
+      '/socket.io': { target: 'http://127.0.0.1:43128', ws: true },
+      '/api': { target: 'http://127.0.0.1:43128' },
+    },
+  },
+  preview: { host: true, port: 43127 },
+})
+
+========================================================================
+FILE: tsconfig.json
+========================================================================
+
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+
+========================================================================
+FILE: tsconfig.app.json
+========================================================================
+
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "module": "esnext",
+    "types": ["vite/client"],
+    "allowArbitraryExtensions": true,
+    "skipLibCheck": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    },
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["src", "shared"]
+}
+
+========================================================================
+FILE: tsconfig.node.json
+========================================================================
+
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo",
+    "target": "es2023",
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "erasableSyntaxOnly": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["vite.config.ts", "server", "shared"]
+}
+
+========================================================================
+FILE: .oxlintrc.json
+========================================================================
+
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "oxc"],
+  "rules": {
+    "react/rules-of-hooks": "error",
+    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+  }
+}
+
+========================================================================
+FILE: shared/types.ts
+========================================================================
+
+export const ROLE_IDS = ['vega', 'engineer', 'pilot', 'sparks'] as const
+export type RoleId = (typeof ROLE_IDS)[number]
+export type StationId = RoleId | 'board'
+
+/** The three crew who can hear, talk, and see one readout each. */
+export const CREW_IDS = ['engineer', 'pilot', 'sparks'] as const
+export type CrewId = (typeof CREW_IDS)[number]
+
+export const VALVES = ['port', 'starboard'] as const
+export type ValveId = (typeof VALVES)[number]
+
+/**
+ * Vega never receives audio. That is the whole game, so it is one predicate that
+ * the server routes every spoken line through rather than a condition inlined at
+ * the send site. Unseated players and the spectator board stay silent too: the
+ * board is meant to sit on the table, and hearing the ship from an empty seat
+ * would leak the crew's job to the room.
+ */
+export function hearsSpeech(role: StationId | null): boolean {
+  return role !== null && role !== 'vega' && role !== 'board'
+}
+
+export type SignalId =
+  | 'pump-off'
+  | 'pump-on'
+  | 'seal-port'
+  | 'seal-starboard'
+  | 'shields-on'
+  | 'shoot'
+
+export const SIGNAL_PRIORITIES = ['critical', 'high', 'medium'] as const
+export type SignalPriority = (typeof SIGNAL_PRIORITIES)[number]
+
+export type Phase = 'lobby' | 'countdown' | 'play' | 'end'
+export type Outcome = 'won' | 'lost'
+export type AirBand = 'ok' | 'low' | 'critical' | 'over'
+
+/** How much of the cabin mix each control is worth right now. Vega only. */
+export interface AirParts {
+  pump: number
+  port: number
+  starboard: number
+  shields: number
+  guns: number
+  /** Leftover mix — leaks, seams, wounds. Not labeled as why. */
+  cabin: number
+}
+
+export interface RecapCall {
+  signal: SignalId
+  from: string
+  acked: boolean
+}
+
+export interface Recap {
+  round: number
+  survived: number
+  airFloor: number
+  airEnd: number
+  calls: RecapCall[]
+  misses: string[]
+  note: string
+}
+
+export interface LobbyPlayer {
+  id: string
+  name: string
+  role: StationId | null
+  ready: boolean
+  connected: boolean
+  host: boolean
+}
+
+export interface SignalEvent {
+  id: string
+  signal: SignalId
+  from: CrewId | null
+  /** The sender's typed username, frozen at send time. Stand-ins are "stand-in". */
+  fromName: string
+  at: number
+  /** Vega has not cleared it yet. */
+  fresh: boolean
+  /** Frozen when the message was sent, so the inbox can sort. */
+  priority: SignalPriority
+}
+
+export interface ClientView {
+  code: string
+  phase: Phase
+  you: {
+    id: string
+    name: string
+    role: StationId | null
+    host: boolean
+    ready: boolean
+  }
+  players: LobbyPlayer[]
+  timeLeft: number | null
+
+  /** Every seat: cabin oxygen. Vega also sees how the switches add up. */
+  air: number | null
+  airBand: AirBand | null
+  /** Vega only: oxygen on each switch. Cabin air is these added up. */
+  airParts: AirParts | null
+  /** Vega only: her own panel. */
+  valves: Record<ValveId, 'open' | 'sealed'> | null
+  leakLights: Record<ValveId, boolean> | null
+  pumpOn: boolean | null
+  shieldsOn: boolean | null
+  /** Vega only: guns just fired. */
+  shot: boolean | null
+  /** Vega only: signals pushed to her glass. */
+  signals: SignalEvent[]
+  /** Vega only: which switch the last picture is pointing at. */
+  aim: SignalId | null
+
+  /** Every seat: reactor power. Engineer also sees voltage. */
+  power: number | null
+  /** Engineer only: how hard the reactor is working, not why. */
+  draw: number | null
+  /** Pilot only. */
+  stormEta: number | null
+  stormActive: boolean | null
+  /** Pilot only: which cluster this is. */
+  rockWave: number | null
+  rockWaves: number | null
+  /** Sparks only. */
+  alarms: string[]
+
+  /** Shared by the three crew: one signal pad, one cooldown. */
+  signalCooldownMs: number | null
+  /** The call this player sent last — not anyone else's. */
+  lastSignal: SignalId | null
+  /** Sender only: how long since oxygen actually flipped the matching switch. */
+  ackAgeMs: number | null
+
+  /**
+   * What THIS seat is being told to do right now. Computed per role so two
+   * phones can scream opposite orders at the same second — that is the fight.
+   */
+  order: { text: string; tone: 'fight' | 'warn' } | null
+  /** Someone just spent a resource this seat owns. Lasts a few seconds. */
+  gripe: string | null
+  /** 0 at the start, 1 in the last seconds. The round is supposed to get louder. */
+  chaos: number
+
+  outcome: Outcome | null
+  loseReason: string | null
+  /** 3-2-1 before the clock starts. Every seat sees this. */
+  countdown: number | null
+  /** Which hab this is for the table. Lobby and debrief only matter. */
+  round: number
+  /** After the horn — the whole table may read this. Not sent during play. */
+  recap: Recap | null
+  /** Spectator board only. */
+  spectator: {
+    air: number
+    power: number
+    stormEta: number | null
+    pumpOn: boolean
+    shieldsOn: boolean
+    valves: Record<ValveId, 'open' | 'sealed'>
+    alarms: string[]
+  } | null
+}
+
+export type ClientAction =
+  | { type: 'valve'; valve: ValveId; sealed: boolean }
+  | { type: 'pump'; on: boolean }
+  | { type: 'shields'; on: boolean }
+  | { type: 'shoot' }
+  | { type: 'clear-signals'; id?: string }
+  | { type: 'signal'; signal: SignalId }
+
+========================================================================
+FILE: shared/content.ts
+========================================================================
+
+import type { CrewId, RoleId, SignalId, SignalPriority, StationId } from './types.ts'
+
+export const CREW_JOB: Record<CrewId, string> = {
+  engineer: 'Power is yours. Kill the pump when the voltage spikes. Oxygen will hate you for it.',
+  pilot: 'You have the only rock clock. Three clusters. Each one needs a new picture: SHIELDS or SHOOT. Either is enough. Power will hate shields.',
+  sparks: 'Communications is yours. Seal the leak. That also starves the pump. They will shout.',
+}
+
+export const MISSION_SECONDS = 90
+export const SIGNAL_COOLDOWN_MS = 4000
+/** How long the guns stay lit after oxygen fires. */
+export const SHOOT_WINDOW_SECONDS = 6
+/** How long one rock cluster sits on the hab after it hits. Short so the next wave can come. */
+export const STORM_DURATION_SECONDS = 8
+/** How many rock clusters the corridor throws. */
+export const ROCK_WAVES = 3
+
+export const VEGA_META = {
+  callsign: 'oxygen',
+  title: 'oxygen',
+  seat: 'In the air plant',
+  constraint: 'Cannot hear anything',
+  honor: 'You are oxygen. Watch the screen. When they need something they will send a picture — and it will often be the opposite of what your air says.',
+  blurb:
+    'You have every control and the only air gauge. Power will tell you to kill the pump. Your number will say absolutely not. Both of you are right. Say the air out loud.',
+  accent: '#3ee0ff',
+} as const
+
+export const CREW_META: Record<
+  CrewId,
+  { callsign: string; title: string; sees: string; blurb: string; accent: string }
+> = {
+  engineer: {
+    callsign: 'power',
+    title: 'power',
+    sees: 'Reactor power',
+    blurb:
+      'You are power. When the voltage spikes, scream to kill the pump. Oxygen will refuse. Navigation will want that same power for shields.',
+    accent: '#ffb020',
+  },
+  pilot: {
+    callsign: 'navigation',
+    title: 'navigation',
+    sees: 'Dust storm clock',
+    blurb:
+      'You are the only one who can see the rocks. Three clusters. Each one needs a new picture: SHIELDS or SHOOT. Either is enough. Power will hate shields.',
+    accent: '#ff6a22',
+  },
+  sparks: {
+    callsign: 'communications',
+    title: 'communications',
+    sees: 'Alarm log',
+    blurb:
+      'You are communications. You see what broke. Sealing a leak starves the pump. They will blame you for the air.',
+    accent: '#5cff9d',
+  },
+}
+
+export const ROLE_TITLE: Record<RoleId, string> = {
+  vega: VEGA_META.title,
+  engineer: CREW_META.engineer.title,
+  pilot: CREW_META.pilot.title,
+  sparks: CREW_META.sparks.title,
+}
+
+export const STATION_META: Record<StationId, { title: string; constraint: string }> = {
+  vega: { title: 'oxygen', constraint: 'Every control. Pictures land as notices.' },
+  engineer: { title: 'power', constraint: 'Sees the reactor' },
+  pilot: { title: 'navigation', constraint: 'Sees the storm clock' },
+  sparks: { title: 'communications', constraint: 'Sees what broke' },
+  board: { title: 'hab monitor', constraint: 'Spectator / camera view' },
+}
+
+/** Letters, numbers, spaces, hyphens. Empty after clean is invalid. */
+export function sanitizeName(name: unknown): string {
+  return String(name ?? '')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .slice(0, 16)
+}
+
+/** Who is actually sitting in a seat right now. */
+export function seatedName(
+  players: { name: string; role: StationId | null; connected: boolean }[],
+  role: StationId,
+  fallback = 'stand-in',
+): string {
+  return players.find((p) => p.connected && p.role === role)?.name ?? fallback
+}
+
+/**
+ * The only way anything reaches Vega — and each signal is welded to one crew
+ * member's console. Chen is the only person alive who can tell her which valve
+ * to seal; Rook is the only one who can touch the pump; Idris is the only one
+ * who can call the storm. Lose any one of them and there is no way to win.
+ */
+export const SIGNALS: {
+  id: SignalId
+  label: string
+  mark: string
+  hint: string
+  owner: CrewId
+}[] = [
+  {
+    id: 'seal-port',
+    label: 'SEAL PORT',
+    mark: '◀',
+    // Port and starboard are jargon, and the log uses them. Spell it out.
+    hint: 'Port = left',
+    owner: 'sparks',
+  },
+  {
+    id: 'seal-starboard',
+    label: 'SEAL STBD',
+    mark: '▶',
+    hint: 'Starboard = right',
+    owner: 'sparks',
+  },
+  {
+    id: 'pump-off',
+    label: 'PUMP OFF',
+    mark: '⏻',
+    hint: 'Frees the power shields eat',
+    owner: 'engineer',
+  },
+  {
+    id: 'pump-on',
+    label: 'PUMP ON',
+    mark: '⏼',
+    hint: 'Without this the air just decays',
+    owner: 'engineer',
+  },
+  {
+    id: 'shields-on',
+    label: 'SHIELDS',
+    mark: '⛨',
+    hint: 'Cover the hab. Eats power.',
+    owner: 'pilot',
+  },
+  {
+    id: 'shoot',
+    label: 'SHOOT',
+    mark: '◎',
+    hint: 'Break the rocks. Costs no power.',
+    owner: 'pilot',
+  },
+]
+
+export const SIGNAL_OWNER: Record<SignalId, CrewId> = SIGNALS.reduce(
+  (acc, s) => {
+    acc[s.id] = s.owner
+    return acc
+  },
+  {} as Record<SignalId, CrewId>,
+)
+
+export function signalsFor(crew: CrewId) {
+  return SIGNALS.filter((s) => s.owner === crew)
+}
+
+export function signalLabel(id: SignalId): string {
+  return SIGNALS.find((s) => s.id === id)?.label ?? id
+}
+
+/** What Vega reads — a person asking her to flip one switch. */
+export const SIGNAL_ASK: Record<SignalId, string> = {
+  'pump-off': 'Turn the air pump off.',
+  'pump-on': 'Turn the air pump on.',
+  'shields-on': 'Raise the dust shields.',
+  shoot: 'Shoot the incoming rocks.',
+  'seal-port': 'Seal the port valve (left).',
+  'seal-starboard': 'Seal the starboard valve (right).',
+}
+
+export function signalAsk(id: SignalId): string {
+  return SIGNAL_ASK[id]
+}
+
+export const PRIORITY_RANK: Record<SignalPriority, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+}
+
+export function signalMark(id: SignalId): string {
+  return SIGNALS.find((s) => s.id === id)?.mark ?? '?'
+}
+
+/** The picture that slams Vega's glass. Same plate the crew press. */
+export function signalArt(id: SignalId): string {
+  return `/art/sig-${id}.webp`
+}
+
+========================================================================
+FILE: server/game.ts
+========================================================================
+
+import {
+  MISSION_SECONDS,
+  PRIORITY_RANK,
+  ROCK_WAVES,
+  SHOOT_WINDOW_SECONDS,
+  SIGNAL_COOLDOWN_MS,
+  SIGNAL_OWNER,
+  STORM_DURATION_SECONDS,
+} from '../shared/content.ts'
+import { VALVES } from '../shared/types.ts'
+import type {
+  AirBand,
+  AirParts,
+  ClientAction,
+  ClientView,
+  CrewId,
+  LobbyPlayer,
+  Outcome,
+  Phase,
+  Recap,
+  RecapCall,
+  SignalEvent,
+  SignalId,
+  SignalPriority,
+  StationId,
+  ValveId,
+} from '../shared/types.ts'
+
+type Rng = () => number
+
+function mulberry32(seed: number): Rng {
+  let a = seed >>> 0
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0
+    let t = a
+    t = Math.imul(t ^ (t >>> 15), t | 1)
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+function pick<T>(rng: Rng, items: readonly T[]): T {
+  return items[Math.floor(rng() * items.length)]!
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n))
+}
+
+function airBand(air: number): AirBand {
+  if (air > 92) return 'over'
+  if (air < 18) return 'critical'
+  if (air < 40) return 'low'
+  return 'ok'
+}
+
+const CHATTER = [
+  'It is getting worse.',
+  'The corridor is louder.',
+  'Do not stop talking.',
+  'Something else just went.',
+  'Hold it together.',
+  'The hab is coming apart.',
+] as const
+
+type ScriptEvent = {
+  t: number
+  kind: 'leak' | 'runaway' | 'storm' | 'impact' | 'drain' | 'voice'
+  valve?: ValveId
+  eta?: number
+  line?: string
+}
+
+export interface SpeakPacket {
+  text: string
+  voice: 'astronaut' | 'system'
+}
+
+export interface HabListener {
+  onView: () => void
+  /** Never routed to Vega. She hears nothing, by design. */
+  onSpeak: (packet: SpeakPacket) => void
+}
+
+interface PlayerRec {
+  id: string
+  name: string
+  role: StationId | null
+  ready: boolean
+  connected: boolean
+  host: boolean
+  socketId: string | null
+}
+
+export class Hab {
+  code: string
+  seed: number
+  phase: Phase = 'lobby'
+  players = new Map<string, PlayerRec>()
+  listener: HabListener | null = null
+
+  private rng: Rng
+  private elapsed = 0
+  private script: ScriptEvent[] = []
+  private scriptI = 0
+  private tickTimer: ReturnType<typeof setInterval> | null = null
+  private npcAcc = 0
+
+  private air = 70
+  private power = 80
+  private valves: Record<ValveId, 'open' | 'sealed'> = { port: 'open', starboard: 'open' }
+  private leaks: Record<ValveId, boolean> = { port: false, starboard: false }
+  private pumpOn = true
+  private shieldsOn = false
+  private runawayUntil = -1
+  private seamBlown = false
+  private seams = 0
+  private stormEta: number | null = null
+  private stormActive = false
+  private stormEndsAt = Infinity
+  private scourWarned = false
+  private ingestWarned = false
+  private impactAt = -1
+  private shotAt = -99
+  private rocksBroken = false
+  private hullWounds = 0
+  private rockWave = 0
+  private alarms: string[] = []
+  private signals: SignalEvent[] = []
+  private lastSignalAt = -99
+  /** Each crew member only sees the call they themselves sent. */
+  private lastSignalBy: Record<CrewId, SignalId | null> = {
+    engineer: null,
+    pilot: null,
+    sparks: null,
+  }
+  private vegaAckAt: number | null = null
+  /** Ack is one-to-one: only the person who sent the call sees it land. */
+  private lastAckedFrom: CrewId | null = null
+  /** Rook's unique tell — the number, not the reason. */
+  private busDraw = 0.1
+  private gripes: Partial<Record<StationId, { text: string; until: number }>> = {}
+  private outcome: Outcome | null = null
+  private loseReason: string | null = null
+  private seq = 1
+  private lastSpoke = -99
+  private round = 1
+  private countdownLeft = 0
+  private airFloor = 120
+  private callLog: RecapCall[] = []
+  private recap: Recap | null = null
+  private impactLanded = false
+  private hadRunaway = false
+  private lastCleared: SignalId | null = null
+
+  constructor(code: string, host: PlayerRec, seed = Date.now()) {
+    this.code = code
+    this.seed = seed
+    this.rng = mulberry32(seed)
+    this.players.set(host.id, host)
+  }
+
+  setSocket(playerId: string, socketId: string | null, connected: boolean) {
+    const p = this.players.get(playerId)
+    if (!p) return
+    p.socketId = socketId
+    p.connected = connected
+    this.listener?.onView()
+  }
+
+  addPlayer(rec: PlayerRec) {
+    this.players.set(rec.id, rec)
+    this.listener?.onView()
+  }
+
+  removePlayer(playerId: string): boolean {
+    const gone = this.players.delete(playerId)
+    if (gone) {
+      // Whoever is left should not be stuck waiting on a host who walked out.
+      if (![...this.players.values()].some((p) => p.host)) {
+        const next = [...this.players.values()].find((p) => p.connected)
+        if (next) next.host = true
+      }
+      this.listener?.onView()
+    }
+    return gone
+  }
+
+  get playerCount(): number {
+    return this.players.size
+  }
+
+  removeIfEmpty(): boolean {
+    return [...this.players.values()].every((p) => !p.connected)
+  }
+
+  claim(playerId: string, role: StationId | null): string | null {
+    const p = this.players.get(playerId)
+    if (!p || this.phase !== 'lobby') return 'Not in lobby'
+    if (role && role !== 'board') {
+      for (const other of this.players.values()) {
+        if (other.id !== playerId && other.role === role) {
+          return 'Somebody already took that seat'
+        }
+      }
+    }
+    p.role = role
+    p.ready = false
+    this.listener?.onView()
+    return null
+  }
+
+  setReady(playerId: string, ready: boolean): string | null {
+    const p = this.players.get(playerId)
+    if (!p) return 'Unknown crew'
+    if (!p.role) return 'Take a seat first'
+    p.ready = ready
+    this.listener?.onView()
+    return null
+  }
+
+  rename(playerId: string, name: string): string | null {
+    const p = this.players.get(playerId)
+    if (!p) return 'Unknown crew'
+    p.name = name
+    this.listener?.onView()
+    return null
+  }
+
+  start(playerId: string, skipCountdown = false): string | null {
+    const p = this.players.get(playerId)
+    if (!p?.host) return 'Only the hab lead can launch'
+    if (this.phase !== 'lobby') return 'Already underway'
+    const seated = [...this.players.values()].filter(
+      (c) => c.connected && c.role && c.role !== 'board',
+    )
+    if (!seated.length) return 'Somebody has to take a seat'
+    if (seated.some((c) => !c.ready)) return 'Crew is not ready'
+    if (skipCountdown) {
+      this.begin()
+      return null
+    }
+    this.phase = 'countdown'
+    this.countdownLeft = 3
+    this.listener?.onView()
+    this.ensureClock()
+    return null
+  }
+
+  /** Same table, new storm. Seats stay so people can swap before they ready up. */
+  replay(playerId: string): string | null {
+    const p = this.players.get(playerId)
+    if (!p?.host) return 'Only the hab lead can run it again'
+    if (this.phase !== 'end') return 'The round is still live'
+    this.round += 1
+    this.seed = (Date.now() ^ (this.round * 7919)) >>> 0
+    this.phase = 'lobby'
+    this.outcome = null
+    this.loseReason = null
+    this.recap = null
+    this.countdownLeft = 0
+    this.stopClock()
+    for (const c of this.players.values()) c.ready = false
+    this.listener?.onView()
+    return null
+  }
+
+  private ensureClock() {
+    if (this.tickTimer) return
+    this.tickTimer = setInterval(() => this.tick(0.1), 100)
+  }
+
+  private begin() {
+    this.rng = mulberry32(this.seed)
+    this.script = this.buildScript()
+    this.phase = 'play'
+    this.elapsed = 0
+    this.scriptI = 0
+    this.lastSpoke = -99
+    this.gripes = {}
+    this.power = 70
+    this.valves = { port: 'open', starboard: 'open' }
+    this.leaks = { port: false, starboard: false }
+    this.pumpOn = true
+    this.shieldsOn = false
+    this.runawayUntil = -1
+    this.seamBlown = false
+    this.seams = 0
+    this.stormEta = null
+    this.stormActive = false
+    this.stormEndsAt = Infinity
+    this.scourWarned = false
+    this.ingestWarned = false
+    this.impactAt = -1
+    this.shotAt = -99
+    this.rocksBroken = false
+    this.hullWounds = 0
+    this.rockWave = 0
+    this.alarms = ['HAB-7 IN THE DUST CORRIDOR', 'PLANT IS LIVE']
+    this.signals = []
+    this.lastSignalAt = -99
+    this.lastSignalBy = { engineer: null, pilot: null, sparks: null }
+    this.vegaAckAt = null
+    this.lastAckedFrom = null
+    this.busDraw = 0.1
+    this.outcome = null
+    this.loseReason = null
+    this.seq = 1
+    this.npcAcc = 0
+    this.airFloor = 60
+    this.callLog = []
+    this.recap = null
+    this.impactLanded = false
+    this.hadRunaway = false
+    this.lastCleared = null
+    this.air = this.airTarget()
+    this.airFloor = this.air
+    this.speak('Ninety seconds. Talk to each other. Send her a picture.', 'astronaut')
+    this.listener?.onView()
+    this.ensureClock()
+  }
+
+  stopClock() {
+    if (this.tickTimer) clearInterval(this.tickTimer)
+    this.tickTimer = null
+  }
+
+  /**
+   * Three rock clusters, stacked with the plant. Wave 1 before the runaway,
+   * wave 2 after it, wave 3 late with the second leak. Each wave spends the
+   * cover, so every seat gets another job: nav calls, oxygen flips, power
+   * handles the voltage, comms seals whatever a miss cracks.
+   */
+  private buildScript(): ScriptEvent[] {
+    const firstValve = pick(this.rng, VALVES)
+    const secondValve: ValveId = firstValve === 'port' ? 'starboard' : 'port'
+    return [
+      { t: 6, kind: 'leak', valve: firstValve },
+      { t: 8, kind: 'storm', eta: 10 },
+      { t: 18, kind: 'impact' },
+      { t: 22, kind: 'runaway' },
+      { t: 36, kind: 'storm', eta: 11 },
+      { t: 47, kind: 'impact' },
+      { t: 50, kind: 'leak', valve: secondValve },
+      { t: 61, kind: 'storm', eta: 10 },
+      { t: 71, kind: 'impact' },
+      { t: 78, kind: 'leak', valve: firstValve },
+    ].sort((a, b) => a.t - b.t) as ScriptEvent[]
+  }
+
+  /** 0 while the first problem is still readable. 1 on the far side. */
+  private chaos(): number {
+    return clamp((this.elapsed - 14) / 62, 0, 1)
+  }
+
+  private cooldownMs(): number {
+    return Math.round(SIGNAL_COOLDOWN_MS * (1 - 0.4 * this.chaos()))
+  }
+
+  private tick(dt: number) {
+    if (this.phase === 'countdown') {
+      this.countdownLeft = Math.max(0, this.countdownLeft - dt)
+      if (this.countdownLeft <= 0) this.begin()
+      else this.listener?.onView()
+      return
+    }
+    if (this.phase !== 'play') return
+    this.elapsed += dt
+    while (this.scriptI < this.script.length && this.elapsed >= this.script[this.scriptI]!.t) {
+      this.fire(this.script[this.scriptI]!)
+      this.scriptI += 1
+    }
+    this.physics(dt)
+
+    const chatterGap = 17 - 10 * this.chaos()
+    if (this.elapsed > 13 && this.elapsed - this.lastSpoke >= chatterGap) {
+      this.speak(pick(this.rng, CHATTER), 'astronaut')
+    }
+
+    this.npcAcc += dt
+    if (this.npcAcc >= 1.2) {
+      this.npcAcc = 0
+      this.npcs()
+    }
+
+    if (this.air <= 0) {
+      this.end('lost', this.diagnose())
+      return
+    }
+    if (this.elapsed >= MISSION_SECONDS) {
+      this.end('won', null)
+      return
+    }
+    this.listener?.onView()
+  }
+
+  private fire(ev: ScriptEvent) {
+    switch (ev.kind) {
+      case 'leak':
+        if (ev.valve) {
+          this.leaks[ev.valve] = true
+          this.valves[ev.valve] = 'open'
+          this.alarm(`${ev.valve === 'port' ? 'PORT' : 'STARBOARD'} VALVE LEAKING`)
+          // Name nothing. Chen has the valve; Vega has the air. They have to talk.
+          this.speak('Something in the plant just opened.', 'astronaut')
+        }
+        break
+      case 'runaway':
+        this.pumpOn = true
+        this.hadRunaway = true
+        this.runawayUntil = this.elapsed + 14
+        this.seamBlown = false
+        // No alarm and no diagnosis. Rook sees the draw spike. Vega sees the
+        // air climb. If the ship named the pump, they would not need each other.
+        this.speak('The plant is getting loud.', 'astronaut')
+        break
+      case 'storm': {
+        this.endRockWave()
+        const eta = ev.eta ?? 10
+        this.rockWave += 1
+        this.rocksBroken = false
+        this.lastSignalBy.pilot = null
+        this.stormEta = eta
+        this.impactAt = this.elapsed + eta
+        this.speak(
+          this.rockWave === 1 ? 'The corridor is changing colour.' : 'The corridor is getting worse.',
+          'astronaut',
+        )
+        break
+      }
+      case 'impact': {
+        this.stormActive = true
+        this.impactLanded = true
+        this.stormEta = 0
+        this.stormEndsAt = this.elapsed + STORM_DURATION_SECONDS
+        this.scourWarned = false
+        this.ingestWarned = false
+        if (!this.stormCovered()) {
+          this.hullWounds += 1
+          this.crackValve()
+          this.alarm('HULL STRUCK')
+          this.speak('That hit.', 'astronaut')
+        } else {
+          this.speak('Still in one piece.', 'astronaut')
+        }
+        break
+      }
+      case 'voice':
+        this.speak(ev.line ?? '', 'astronaut')
+        break
+      case 'drain':
+        break
+    }
+  }
+
+  private stormCovered(): boolean {
+    return (this.shieldsOn && this.power > 2) || this.rocksBroken
+  }
+
+  /** Drop cover so the next cluster is a fresh job, not a leftover from the last one. */
+  private endRockWave() {
+    this.stormActive = false
+    this.stormEta = null
+    this.shieldsOn = false
+    this.rocksBroken = false
+    this.lastSignalBy.pilot = null
+  }
+
+  /** A miss opens a valve. Communications has to call it; oxygen has to flip it. */
+  private crackValve() {
+    const v: ValveId =
+      this.valves.port === 'sealed'
+        ? 'port'
+        : this.valves.starboard === 'sealed'
+          ? 'starboard'
+          : pick(this.rng, VALVES)
+    this.leaks[v] = true
+    this.valves[v] = 'open'
+    this.alarm(`${v === 'port' ? 'PORT' : 'STARBOARD'} VALVE LEAKING`)
+  }
+
+  /**
+   * Cabin air is these parts added up. Each switch has its own oxygen number;
+   * hidden plant trouble lives in `cabin` so a valve light never names a leak.
+   */
+  private airParts(): AirParts {
+    const port = this.valves.port === 'open' ? 16 : 0
+    const starboard = this.valves.starboard === 'open' ? 16 : 0
+    const feed = (port + starboard) / 32
+    const runaway = this.elapsed < this.runawayUntil
+
+    let pump = 0
+    if (this.pumpOn && this.power > 4 && feed > 0) {
+      pump = Math.round(42 * feed)
+      if (runaway) pump += 50
+      if (this.stormActive) pump -= 12
+    }
+
+    const covered = this.stormCovered()
+    let shields = 0
+    if (this.stormActive) {
+      shields = this.shieldsOn && this.power > 2 ? 14 : covered ? 0 : -24
+    }
+
+    let guns = 0
+    if (this.rocksBroken) {
+      guns = this.stormActive || (this.stormEta != null && this.stormEta <= 8) ? 14 : 0
+    }
+
+    let cabin = 14
+    for (const v of VALVES) {
+      if (this.leaks[v] && this.valves[v] !== 'sealed') cabin -= 90
+    }
+    cabin -= this.seams * 20
+    cabin -= this.hullWounds * 26
+
+    return { pump, port, starboard, shields, guns, cabin }
+  }
+
+  private airTarget() {
+    const p = this.airParts()
+    return clamp(p.pump + p.port + p.starboard + p.shields + p.guns + p.cabin, 0, 120)
+  }
+
+  private physics(dt: number) {
+    if (this.stormActive && this.elapsed >= this.stormEndsAt) {
+      this.endRockWave()
+      this.speak('It is quieter out there.', 'astronaut')
+    } else if (this.stormActive) {
+      const pumpLive =
+        this.pumpOn &&
+        this.power > 4 &&
+        VALVES.some((v) => this.valves[v] === 'open')
+      if (pumpLive && !this.ingestWarned) {
+        this.ingestWarned = true
+        this.speak('The air tastes like grit.', 'astronaut')
+      }
+      if (!this.stormCovered() && !this.scourWarned) {
+        this.scourWarned = true
+        this.alarm('HULL SCOURED')
+      }
+    }
+
+    const target = this.airTarget()
+    this.air += (target - this.air) * (1 - Math.exp(-0.55 * dt))
+    if (Math.abs(target - this.air) < 0.2) this.air = target
+    this.air = clamp(this.air, 0, 120)
+
+    if (this.air >= 100 && !this.seamBlown) {
+      this.seamBlown = true
+      this.seams += 1
+      this.alarm(`SEAM ${this.seams} BLEW`)
+      this.speak('The hull just complained.', 'astronaut')
+    }
+    if (this.seamBlown && this.air < 88) this.seamBlown = false
+    this.airFloor = Math.min(this.airFloor, this.air)
+
+    // Power is Rook's whole world. Kept so the pump never starves itself into
+    // silence — if it browned out on its own it would quietly cancel both of
+    // the punishments it is supposed to cause.
+    let draw = 0.1
+    if (this.pumpOn) draw += this.elapsed < this.runawayUntil || this.stormActive ? 0.9 : 0.3
+    if (this.shieldsOn) draw += this.stormActive ? 2.2 : 0.3
+    this.busDraw = draw
+    this.power = clamp(this.power + 0.5 * dt - draw * dt, 0, 100)
+
+    if (this.stormEta != null && !this.stormActive) {
+      this.stormEta = Math.max(0, this.impactAt - this.elapsed)
+    }
+  }
+
+  private isSeated(role: StationId): boolean {
+    for (const p of this.players.values()) {
+      if (p.connected && p.role === role) return true
+    }
+    return false
+  }
+
+  private occupantName(role: StationId): string {
+    for (const p of this.players.values()) {
+      if (p.connected && p.role === role) return p.name
+    }
+    return 'stand-in'
+  }
+
+  /**
+   * Empty seats get a slow stand-in. Seated-but-silent humans stay silent —
+   * that is still an unwinnable table, on purpose.
+   */
+  private npcs() {
+    if (!this.isSeated('vega')) {
+      for (const v of VALVES) {
+        if (this.leaks[v] && this.valves[v] !== 'sealed') this.valves[v] = 'sealed'
+      }
+      if (this.air > 90) this.pumpOn = false
+      else if (this.air < 45) this.pumpOn = true
+      if (this.stormEta != null && this.stormEta < 12) {
+        this.shieldsOn = true
+        this.rocksBroken = true
+      }
+    }
+
+    const remain = this.cooldownMs() - (this.elapsed - this.lastSignalAt) * 1000
+    if (remain > 0) return
+
+    const runaway = this.elapsed < this.runawayUntil
+    const leaking = VALVES.filter((v) => this.leaks[v] && this.valves[v] !== 'sealed')
+    const eta = this.stormEta
+
+    if (!this.isSeated('engineer')) {
+      if (runaway && this.pumpOn) {
+        this.pushSignal('pump-off', 'engineer')
+        return
+      }
+      if (this.stormActive && this.pumpOn) {
+        this.pushSignal('pump-off', 'engineer')
+        return
+      }
+      if (!runaway && !this.stormActive && !this.pumpOn && this.air < 72) {
+        this.pushSignal('pump-on', 'engineer')
+        return
+      }
+    }
+
+    if (!this.isSeated('pilot')) {
+      if (
+        eta != null &&
+        !this.stormActive &&
+        eta <= 13 &&
+        this.lastSignalBy.pilot !== 'shields-on' &&
+        this.lastSignalBy.pilot !== 'shoot'
+      ) {
+        this.pushSignal('shields-on', 'pilot')
+        return
+      }
+    }
+
+    if (!this.isSeated('sparks') && leaking.length) {
+      this.pushSignal(leaking[0] === 'port' ? 'seal-port' : 'seal-starboard', 'sparks')
+    }
+  }
+
+  applyAction(playerId: string, action: ClientAction): string | null {
+    if (this.phase !== 'play') return 'Mission not live'
+    const p = this.players.get(playerId)
+    if (!p?.role || p.role === 'board') return 'You are spectating'
+    const role = p.role
+
+    if (action.type === 'signal') {
+      if (role === 'vega') return 'You are the one being signalled'
+      // Welded to one console, so all three of them are load-bearing.
+      const owner = SIGNAL_OWNER[action.signal]
+      if (owner !== role) return 'Not your call to make'
+      const remain = this.cooldownMs() - (this.elapsed - this.lastSignalAt) * 1000
+      if (remain > 0) return 'Pad is still resetting'
+      this.pushSignal(action.signal, role as CrewId)
+      this.listener?.onView()
+      return null
+    }
+
+    if (role !== 'vega') return 'Only Vega can touch the ship'
+
+    switch (action.type) {
+      case 'valve':
+        this.valves[action.valve] = action.sealed ? 'sealed' : 'open'
+        if (action.sealed) {
+          this.fulfill(action.valve === 'port' ? 'seal-port' : 'seal-starboard')
+        }
+        if (action.sealed && VALVES.every((v) => this.valves[v] === 'sealed')) {
+          this.gripe('vega', 'INTAKE IS DEAD. YOU SEALED THE FEED.')
+          this.gripe('engineer', 'NO FEED. THE PUMP IS SPINNING ON NOTHING.')
+        }
+        break
+      case 'pump':
+        this.pumpOn = action.on
+        this.fulfill(action.on ? 'pump-on' : 'pump-off')
+        if (action.on) this.gripe('engineer', 'THEY LIT THE PUMP. THAT VOLTAGE WAS YOURS.')
+        else {
+          this.gripe('vega', 'THEY KILLED YOUR AIR.')
+          if (this.stormEta != null || this.stormActive) {
+            this.gripe('pilot', 'THE PUMP IS OFF. SEND SHIELDS OR SHOOT.')
+          }
+        }
+        break
+      case 'shields':
+        this.shieldsOn = action.on
+        if (action.on) {
+          this.fulfill('shields-on')
+          this.gripe('engineer', 'SHIELDS TOOK THE POWER. THAT VOLTAGE WAS YOURS.')
+        } else this.gripe('pilot', 'THEY DROPPED THE SHIELDS. SEND SHIELDS OR SHOOT.')
+        break
+      case 'shoot':
+        this.shotAt = this.elapsed
+        if (this.stormEta != null || this.stormActive) this.rocksBroken = true
+        this.fulfill('shoot')
+        break
+      case 'clear-signals':
+        // One bit back per message: "I saw this ask."
+        const fresh = this.signals.filter((s) => s.fresh)
+        const target = action.id ? fresh.find((s) => s.id === action.id) : fresh.at(-1)
+        if (target) {
+          this.vegaAckAt = this.elapsed
+          this.lastAckedFrom = target.from
+          this.lastCleared = target.signal
+          for (let i = this.callLog.length - 1; i >= 0; i--) {
+            const row = this.callLog[i]!
+            if (row.signal === target.signal && !row.acked) {
+              row.acked = true
+              break
+            }
+          }
+        }
+        this.signals = this.signals.map((s) => ({
+          ...s,
+          fresh: action.id ? s.id !== action.id && s.fresh : false,
+        }))
+        break
+    }
+    this.listener?.onView()
+    return null
+  }
+
+  /** Doing the switch is the reply. There is no got-it button. */
+  private fulfill(signal: SignalId) {
+    const pending = this.signals.filter((s) => s.fresh && s.signal === signal)
+    if (!pending.length) return
+    const target = pending[pending.length - 1]!
+    this.vegaAckAt = this.elapsed
+    this.lastAckedFrom = target.from
+    this.lastCleared = signal
+    for (let i = this.callLog.length - 1; i >= 0; i--) {
+      const row = this.callLog[i]!
+      if (row.signal === signal && !row.acked) {
+        row.acked = true
+        break
+      }
+    }
+    this.signals = this.signals.map((s) => ({
+      ...s,
+      fresh: s.signal === signal ? false : s.fresh,
+    }))
+  }
+
+  private pushSignal(signal: SignalId, from: CrewId | null) {
+    this.lastSignalAt = this.elapsed
+    if (from) this.lastSignalBy[from] = signal
+    this.lastAckedFrom = null
+    const fromName = from && this.isSeated(from) ? this.occupantName(from) : 'stand-in'
+    this.signals = [
+      ...this.signals.slice(-5),
+      {
+        id: String(this.seq++),
+        signal,
+        from,
+        fromName,
+        at: Date.now(),
+        fresh: true,
+        priority: this.rankAsk(signal),
+      },
+    ]
+    this.callLog.push({
+      signal,
+      from: fromName,
+      acked: false,
+    })
+    // Do not announce the call. The other two find out by asking.
+  }
+
+  private rankAsk(signal: SignalId): SignalPriority {
+    const runaway = this.elapsed < this.runawayUntil
+    const eta = this.stormEta
+    const leaking = VALVES.some((v) => this.leaks[v] && this.valves[v] !== 'sealed')
+    switch (signal) {
+      case 'shoot':
+        return this.stormActive || (eta != null && eta <= 8) ? 'critical' : 'high'
+      case 'shields-on':
+        return this.stormActive || (eta != null && eta <= 8) ? 'critical' : 'high'
+      case 'pump-off':
+        return this.air >= 92 || runaway ? 'critical' : 'high'
+      case 'pump-on':
+        return this.air < 40 ? 'high' : 'medium'
+      case 'seal-port':
+      case 'seal-starboard':
+        return leaking ? 'high' : 'medium'
+    }
+  }
+
+  private inbox() {
+    return this.signals
+      .filter((s) => s.fresh)
+      .slice()
+      .sort(
+        (a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || b.at - a.at,
+      )
+  }
+
+  private alarm(line: string) {
+    this.alarms = [...this.alarms.slice(-9), line]
+  }
+
+  private gripe(who: StationId, text: string) {
+    this.gripes[who] = { text, until: this.elapsed + 5.5 }
+  }
+
+  private gripeLine(who: StationId): string | null {
+    const g = this.gripes[who]
+    if (!g || this.elapsed > g.until) return null
+    return g.text
+  }
+
+  /**
+   * Per-seat orders, written to contradict each other on purpose. Rook will be
+   * told to kill the pump in the same second Vega is told absolutely not.
+   * Naming the other person's number here would let them skip the argument.
+   */
+  private orderFor(role: StationId): { text: string; tone: 'fight' | 'warn' } | null {
+    if (this.phase !== 'play') return null
+    const runaway = this.elapsed < this.runawayUntil
+    const leaking = VALVES.filter((v) => this.leaks[v] && this.valves[v] !== 'sealed')
+    const air = this.air
+    const power = this.power
+    const eta = this.stormEta
+
+    if (role === 'vega') {
+      // Her own gauge only. Their asks land in the inbox with a name and a priority.
+      if (air >= 92) return { text: 'TOO MUCH AIR — TURN THE PUMP OFF OR IT SPLITS.', tone: 'fight' }
+      if (air < 40 && !this.pumpOn) return { text: 'AIR IS LOW. TURN THE PUMP ON.', tone: 'fight' }
+      if (air < 48) return { text: 'AIR IS FALLING. KEEP THE PUMP ON.', tone: 'warn' }
+      return null
+    }
+
+    if (role === 'engineer') {
+      if (runaway && this.pumpOn) {
+        return { text: `POWER ${Math.round(power)}% — TURN OFF THE PUMP. TEN SECONDS.`, tone: 'fight' }
+      }
+      if (this.stormActive && this.pumpOn) {
+        return { text: `POWER ${Math.round(power)}% — THE PUMP IS STEALING THE POWER.`, tone: 'fight' }
+      }
+      if (eta != null && !this.stormActive && this.pumpOn && power < 62) {
+        return { text: `POWER ${Math.round(power)}% — KILL THE PUMP. SOMETHING ELSE NEEDS THIS VOLTAGE.`, tone: 'fight' }
+      }
+      if (this.shieldsOn && power < 28) {
+        return { text: `POWER ${Math.round(power)}% — SHIELDS ARE EATING YOU ALIVE.`, tone: 'fight' }
+      }
+      if (power < 22) return { text: `POWER ${Math.round(power)}% — DUMP SOMETHING.`, tone: 'warn' }
+      return null
+    }
+
+    if (role === 'pilot') {
+      const sent = this.lastSignalBy.pilot
+      const secs = eta == null ? 0 : Math.ceil(eta)
+      const called = sent === 'shields-on' || sent === 'shoot'
+      if (eta != null && !this.stormActive) {
+        if (called) return null
+        return { text: `${secs} — SHIELDS OR SHOOT. PICK ONE.`, tone: 'fight' }
+      }
+      if (this.stormActive && !this.stormCovered()) {
+        return { text: 'IT HIT. SHIELDS OR SHOOT — PICK ONE.', tone: 'fight' }
+      }
+      return null
+    }
+
+    if (role === 'sparks') {
+      if (leaking.length) {
+        const which = leaking[0] === 'port' ? 'PORT' : 'STARBOARD'
+        return { text: `${which} IS BLEEDING. SEAL IT. DO NOT WAIT.`, tone: 'fight' }
+      }
+      if (this.seams > 0) return { text: 'A SEAM ALREADY BLEW. STOP OVERFILLING.', tone: 'warn' }
+      return null
+    }
+
+    return null
+  }
+
+  private speak(text: string, voice: 'astronaut' | 'system') {
+    if (!text) return
+    this.lastSpoke = this.elapsed
+    this.listener?.onSpeak({ text, voice })
+  }
+
+  private diagnose(): string {
+    const leaking = VALVES.filter((v) => this.leaks[v] && this.valves[v] !== 'sealed')
+    if (leaking.length) return 'Air bled out a valve that stayed open.'
+    if (this.seams) return 'The cabin split. Too much air, too long.'
+    if (this.hullWounds) {
+      return this.hullWounds === 1
+        ? 'A rock cluster hit uncovered. The hull opened.'
+        : `${this.hullWounds} rock clusters hit uncovered. The hull opened.`
+    }
+    return 'The air ran out.'
+  }
+
+  private writeRecap(outcome: Outcome, reason: string | null) {
+    const sent = new Set(this.callLog.map((c) => c.signal))
+    const leaking = VALVES.filter((v) => this.leaks[v] && this.valves[v] !== 'sealed')
+    const misses: string[] = []
+    if (this.hadRunaway && !sent.has('pump-off')) misses.push('Nobody sent PUMP OFF.')
+    if (this.hullWounds) {
+      misses.push(
+        this.hullWounds === 1
+          ? 'One rock cluster hit uncovered.'
+          : `${this.hullWounds} rock clusters hit uncovered.`,
+      )
+    }
+    if (this.impactLanded && !sent.has('shields-on') && !sent.has('shoot')) {
+      misses.push('Nobody sent SHIELDS or SHOOT.')
+    }
+    if (leaking.length) {
+      misses.push(
+        leaking[0] === 'port' ? 'Port was still bleeding.' : 'Starboard was still bleeding.',
+      )
+    }
+    if (this.seams) misses.push(`A seam blew (${this.seams}).`)
+    const acked = this.callLog.filter((c) => c.acked).length
+    if (this.callLog.length && acked === 0) misses.push('Oxygen never flipped a matching switch.')
+
+    this.recap = {
+      round: this.round,
+      survived: Math.round(this.elapsed),
+      airFloor: Math.round(this.airFloor),
+      airEnd: Math.round(this.air),
+      calls: this.callLog.slice(-8),
+      misses,
+      note:
+        outcome === 'won'
+          ? `You talked. Air never dropped below ${Math.round(this.airFloor)}%.`
+          : (reason ?? 'The air ran out.'),
+    }
+  }
+
+  private end(outcome: Outcome, reason: string | null) {
+    this.phase = 'end'
+    this.outcome = outcome
+    this.loseReason = reason
+    this.writeRecap(outcome, reason)
+    this.stopClock()
+    this.speak(
+      outcome === 'won'
+        ? 'Far side of the corridor. Hab seven still has air in it.'
+        : 'Hab seven is quiet.',
+      'astronaut',
+    )
+    this.listener?.onView()
+  }
+
+  lobbyPlayers(): LobbyPlayer[] {
+    return [...this.players.values()].map((p) => ({
+      id: p.id,
+      name: p.name,
+      role: p.role,
+      ready: p.ready,
+      connected: p.connected,
+      host: p.host,
+    }))
+  }
+
+  viewFor(playerId: string): ClientView | null {
+    const you = this.players.get(playerId)
+    if (!you) return null
+    const role = you.role
+    const timeLeft =
+      this.phase === 'lobby' || this.phase === 'countdown'
+        ? null
+        : Math.max(0, MISSION_SECONDS - this.elapsed)
+    const cooldown =
+      this.phase === 'play'
+        ? Math.max(0, this.cooldownMs() - (this.elapsed - this.lastSignalAt) * 1000)
+        : 0
+
+    const seated =
+      role === 'vega' || role === 'engineer' || role === 'pilot' || role === 'sparks'
+    const shipAir = seated ? Math.round(this.air) : null
+    const shipBand = seated ? airBand(this.air) : null
+    const shipPower = seated ? Math.round(this.power) : null
+
+    const base: ClientView = {
+      code: this.code,
+      phase: this.phase,
+      you: {
+        id: you.id,
+        name: you.name,
+        role: you.role,
+        host: you.host,
+        ready: you.ready,
+      },
+      players: this.lobbyPlayers(),
+      timeLeft,
+      air: shipAir,
+      airBand: shipBand,
+      airParts: null,
+      valves: null,
+      leakLights: null,
+      pumpOn: null,
+      shieldsOn: null,
+      shot: null,
+      signals: [],
+      power: shipPower,
+      draw: null,
+      stormEta: null,
+      stormActive: null,
+      alarms: [],
+      signalCooldownMs: null,
+      lastSignal: null,
+      ackAgeMs: null,
+      aim: null,
+      order: null,
+      gripe: null,
+      chaos: this.phase === 'play' ? this.chaos() : 0,
+      outcome: this.outcome,
+      loseReason: this.loseReason,
+      countdown: this.phase === 'countdown' ? Math.ceil(this.countdownLeft) : null,
+      round: this.round,
+      recap: this.phase === 'end' ? this.recap : null,
+      spectator: null,
+      rockWave: null,
+      rockWaves: null,
+    }
+
+    if (role === 'vega') {
+      // Shared bars: air and power. Unique: the mix on each switch, and every
+      // control. No clock, no voltage, no storm, no alarm text, no leak lights,
+      // and never any audio. Which valve is bleeding is communications' to send.
+      return {
+        ...base,
+        timeLeft: null,
+        airParts: this.airParts(),
+        valves: { ...this.valves },
+        leakLights: null,
+        pumpOn: this.pumpOn,
+        shieldsOn: this.shieldsOn,
+        shot: this.elapsed - this.shotAt <= SHOOT_WINDOW_SECONDS,
+        signals: this.signals,
+        aim:
+          this.inbox()[0]?.signal ??
+          (this.vegaAckAt != null && this.elapsed - this.vegaAckAt < 5 ? this.lastCleared : null),
+        order: this.orderFor('vega'),
+        gripe: this.gripeLine('vega'),
+      }
+    }
+
+    const ackFor = (crew: CrewId) =>
+      this.lastAckedFrom === crew && this.vegaAckAt != null
+        ? Math.round((this.elapsed - this.vegaAckAt) * 1000)
+        : null
+
+    if (role === 'engineer') {
+      return {
+        ...base,
+        draw: Math.round(this.busDraw * 10) / 10,
+        signalCooldownMs: cooldown,
+        lastSignal: this.lastSignalBy.engineer,
+        ackAgeMs: ackFor('engineer'),
+        order: this.orderFor('engineer'),
+        gripe: this.gripeLine('engineer'),
+      }
+    }
+
+    if (role === 'pilot') {
+      return {
+        ...base,
+        stormEta: this.stormEta,
+        stormActive: this.stormActive,
+        rockWave: this.rockWave,
+        rockWaves: ROCK_WAVES,
+        signalCooldownMs: cooldown,
+        lastSignal: this.lastSignalBy.pilot,
+        ackAgeMs: ackFor('pilot'),
+        order: this.orderFor('pilot'),
+        gripe: this.gripeLine('pilot'),
+      }
+    }
+
+    if (role === 'sparks') {
+      return {
+        ...base,
+        alarms: this.alarms,
+        signalCooldownMs: cooldown,
+        lastSignal: this.lastSignalBy.sparks,
+        ackAgeMs: ackFor('sparks'),
+        order: this.orderFor('sparks'),
+        gripe: this.gripeLine('sparks'),
+      }
+    }
+
+    if (role === 'board') {
+      return {
+        ...base,
+        stormActive: this.stormActive,
+        spectator: {
+          air: Math.round(this.air),
+          power: Math.round(this.power),
+          stormEta: this.stormEta,
+          pumpOn: this.pumpOn,
+          shieldsOn: this.shieldsOn,
+          valves: { ...this.valves },
+          alarms: this.alarms,
+        },
+      }
+    }
+
+    return base
+  }
+}
+
+export function makeCode(): string {
+  const alphabet = 'ABDEFGHJKMNPQRSTUVWXYZ'
+  let s = ''
+  for (let i = 0; i < 4; i++) {
+    s += alphabet[Math.floor(Math.random() * alphabet.length)]
+  }
+  return s
+}
+
+========================================================================
+FILE: server/index.ts
+========================================================================
+
+import cors from 'cors'
+import express from 'express'
+import { createServer } from 'node:http'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { Server } from 'socket.io'
+import { sanitizeName } from '../shared/content.ts'
+import { hearsSpeech } from '../shared/types.ts'
+import type { ClientAction, StationId } from '../shared/types.ts'
+import { Hab, makeCode } from './game.ts'
+import type { SpeakPacket } from './game.ts'
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const app = express()
+app.use(cors())
+app.use(express.json())
+
+const httpServer = createServer(app)
+const io = new Server(httpServer, { cors: { origin: true }, path: '/socket.io' })
+
+const habs = new Map<string, Hab>()
+
+/**
+ * A connection is bound to exactly one hab. Resolving by socket rather than by
+ * searching every hab for the player id matters because a player id outlives a
+ * hab: it is kept in sessionStorage, so refreshing and opening a new hab used to
+ * leave the old membership in place, and every later action was silently routed
+ * to whichever hab happened to come first in the map.
+ */
+function habForSocket(socket: { data: { playerId?: string; code?: string } }): Hab | undefined {
+  const { code, playerId } = socket.data
+  if (code) {
+    const hab = habs.get(code)
+    if (hab && playerId && hab.players.has(playerId)) return hab
+  }
+  if (!playerId) return undefined
+  for (const hab of habs.values()) {
+    if (hab.players.has(playerId)) return hab
+  }
+  return undefined
+}
+
+/** Drop a stale membership so one player id is never live in two habs at once. */
+function leaveOtherHabs(playerId: string, keepCode: string) {
+  for (const hab of [...habs.values()]) {
+    if (hab.code === keepCode) continue
+    if (!hab.removePlayer(playerId)) continue
+    if (hab.playerCount === 0) {
+      hab.stopClock()
+      habs.delete(hab.code)
+    }
+  }
+}
+
+function bind(hab: Hab) {
+  hab.listener = {
+    onView: () => {
+      for (const p of hab.players.values()) {
+        if (!p.socketId) continue
+        const view = hab.viewFor(p.id)
+        if (view) io.to(p.socketId).emit('view', view)
+      }
+    },
+    onSpeak: (packet: SpeakPacket) => {
+      for (const p of hab.players.values()) {
+        if (!p.socketId || !hearsSpeech(p.role)) continue
+        io.to(p.socketId).emit('speak', packet)
+      }
+    },
+  }
+}
+
+/**
+ * Server-side voice proxy. The xAI key stays on the host machine and is never
+ * shipped to a phone. Without a key, clients fall back to browser speech.
+ */
+app.post('/api/voice', async (req, res) => {
+  const key = process.env.XAI_API_KEY
+  if (!key) {
+    res.status(501).json({ error: 'no-key' })
+    return
+  }
+  const text = String((req.body as { text?: string })?.text ?? '').slice(0, 400)
+  if (!text) {
+    res.status(400).json({ error: 'no-text' })
+    return
+  }
+  try {
+    const upstream = await fetch(
+      process.env.XAI_TTS_URL || 'https://api.x.ai/v1/audio/speech',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: process.env.XAI_TTS_MODEL || 'grok-voice',
+          voice: process.env.XAI_TTS_VOICE || 'ember',
+          input: text,
+        }),
+      },
+    )
+    if (!upstream.ok) {
+      res.status(502).json({ error: 'upstream', status: upstream.status })
+      return
+    }
+    const buf = Buffer.from(await upstream.arrayBuffer())
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'audio/mpeg')
+    res.send(buf)
+  } catch {
+    res.status(502).json({ error: 'unreachable' })
+  }
+})
+
+app.get('/api/health', (_req, res) => {
+  res.json({ ok: true, habs: habs.size, voice: process.env.XAI_API_KEY ? 'grok' : 'browser' })
+})
+
+io.on('connection', (socket) => {
+  socket.on(
+    'create',
+    (payload: { name: string; playerId?: string }, cb?: (res: unknown) => void) => {
+      const name = sanitizeName(payload?.name)
+      if (!name) {
+        cb?.({ ok: false, error: 'Pick a username' })
+        return
+      }
+      const playerId = payload?.playerId || crypto.randomUUID()
+      let code = makeCode()
+      while (habs.has(code)) code = makeCode()
+      const hab = new Hab(code, {
+        id: playerId,
+        name,
+        role: null,
+        ready: false,
+        connected: true,
+        host: true,
+        socketId: socket.id,
+      })
+      bind(hab)
+      habs.set(code, hab)
+      leaveOtherHabs(playerId, code)
+      socket.data.playerId = playerId
+      socket.data.code = code
+      socket.join(code)
+      cb?.({ ok: true, playerId, view: hab.viewFor(playerId) })
+    },
+  )
+
+  socket.on(
+    'join',
+    (
+      payload: { code: string; name: string; playerId?: string },
+      cb?: (res: unknown) => void,
+    ) => {
+      const code = (payload?.code || '').toUpperCase().trim()
+      const hab = habs.get(code)
+      if (!hab) {
+        cb?.({ ok: false, error: 'No hab with that code' })
+        return
+      }
+      const name = sanitizeName(payload?.name)
+      if (!name) {
+        cb?.({ ok: false, error: 'Pick a username' })
+        return
+      }
+      const playerId = payload?.playerId || crypto.randomUUID()
+      if (hab.players.has(playerId)) {
+        hab.setSocket(playerId, socket.id, true)
+        hab.rename(playerId, name)
+      } else {
+        if (hab.phase !== 'lobby') {
+          cb?.({ ok: false, error: 'That round already started' })
+          return
+        }
+        hab.addPlayer({
+          id: playerId,
+          name,
+          role: null,
+          ready: false,
+          connected: true,
+          host: false,
+          socketId: socket.id,
+        })
+      }
+      leaveOtherHabs(playerId, code)
+      socket.data.playerId = playerId
+      socket.data.code = code
+      socket.join(code)
+      cb?.({ ok: true, playerId, view: hab.viewFor(playerId) })
+    },
+  )
+
+  socket.on('claim', (role: StationId | null, cb?: (res: unknown) => void) => {
+    const hab = habForSocket(socket)
+    if (!hab) return cb?.({ ok: false, error: 'No hab' })
+    const err = hab.claim(socket.data.playerId, role)
+    cb?.(err ? { ok: false, error: err } : { ok: true })
+  })
+
+  socket.on('ready', (ready: boolean, cb?: (res: unknown) => void) => {
+    const hab = habForSocket(socket)
+    if (!hab) return cb?.({ ok: false, error: 'No hab' })
+    const err = hab.setReady(socket.data.playerId, ready)
+    cb?.(err ? { ok: false, error: err } : { ok: true })
+  })
+
+  socket.on('name', (raw: unknown, cb?: (res: unknown) => void) => {
+    const hab = habForSocket(socket)
+    if (!hab) return cb?.({ ok: false, error: 'No hab' })
+    const name = sanitizeName(raw)
+    if (!name) return cb?.({ ok: false, error: 'Pick a username' })
+    const err = hab.rename(socket.data.playerId, name)
+    cb?.(err ? { ok: false, error: err } : { ok: true })
+  })
+
+  socket.on('start', (cb?: (res: unknown) => void) => {
+    const hab = habForSocket(socket)
+    if (!hab) return cb?.({ ok: false, error: 'No hab' })
+    const err = hab.start(socket.data.playerId)
+    cb?.(err ? { ok: false, error: err } : { ok: true })
+  })
+
+  socket.on('replay', (cb?: (res: unknown) => void) => {
+    const hab = habForSocket(socket)
+    if (!hab) return cb?.({ ok: false, error: 'No hab' })
+    const err = hab.replay(socket.data.playerId)
+    cb?.(err ? { ok: false, error: err } : { ok: true })
+  })
+
+  socket.on('action', (action: ClientAction, cb?: (res: unknown) => void) => {
+    const hab = habForSocket(socket)
+    if (!hab) return cb?.({ ok: false, error: 'No hab' })
+    const err = hab.applyAction(socket.data.playerId, action)
+    cb?.(err ? { ok: false, error: err } : { ok: true })
+  })
+
+  socket.on('disconnect', () => {
+    const hab = habForSocket(socket)
+    if (!hab) return
+    hab.setSocket(socket.data.playerId, null, false)
+    setTimeout(() => {
+      if (hab.removeIfEmpty()) {
+        hab.stopClock()
+        habs.delete(hab.code)
+      }
+    }, 30_000)
+  })
+})
+
+const dist = path.join(root, 'dist')
+app.use(express.static(dist))
+app.get('/{*splat}', (_req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    res.sendFile(path.join(dist, 'index.html'))
+    return
+  }
+  next()
+})
+
+const port = Number(process.env.PORT || 43128)
+httpServer.listen(port, '0.0.0.0', () => {
+  console.log(`HAB bus on :${port}`)
+})
+
+========================================================================
+FILE: src/main.tsx
+========================================================================
+
+import { StrictMode } from 'react'
+import { createRoot } from 'react-dom/client'
+import App from './App.tsx'
+import './index.css'
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+)
+
+========================================================================
+FILE: src/App.tsx
+========================================================================
+
+import { useEffect, useRef, useState } from 'react'
+import type { ClientView, StationId } from '@shared/types'
+import { speak, unlockAudio } from './audio'
+import { getSocket } from './net'
+import { Countdown } from './screens/Countdown'
+import { Debrief } from './screens/Debrief'
+import { Home } from './screens/Home'
+import { Lobby } from './screens/Lobby'
+import { Play } from './screens/Play'
+import { Tutorial } from './screens/Tutorial'
+
+export default function App() {
+  const [view, setView] = useState<ClientView | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [tutorial, setTutorial] = useState(false)
+  const role = useRef<StationId | null>(null)
+
+  useEffect(() => {
+    role.current = view?.you.role ?? null
+  }, [view?.you.role])
+
+  useEffect(() => {
+    const s = getSocket()
+    const onView = (next: ClientView) => setView(next)
+    const onSpeak = (p: { text: string; voice: 'astronaut' | 'system' }) => {
+      // Belt and braces: the server already refuses to send Vega audio.
+      if (role.current === 'vega') return
+      void speak(p.text, p.voice)
+    }
+    const onDrop = () => setError('Lost the hab. Reconnecting…')
+    const onUp = () => setError(null)
+    s.on('view', onView)
+    s.on('speak', onSpeak)
+    s.on('disconnect', onDrop)
+    s.on('connect', onUp)
+    return () => {
+      s.off('view', onView)
+      s.off('speak', onSpeak)
+      s.off('disconnect', onDrop)
+      s.off('connect', onUp)
+    }
+  }, [])
+
+  if (tutorial) {
+    return (
+      <Tutorial
+        onDone={() => {
+          setTutorial(false)
+        }}
+      />
+    )
+  }
+
+  if (!view) {
+    return (
+      <Home
+        error={error}
+        onReady={unlockAudio}
+        onTutorial={() => {
+          unlockAudio()
+          setTutorial(true)
+        }}
+        onView={(v) => {
+          setError(null)
+          setView(v)
+        }}
+        onError={setError}
+      />
+    )
+  }
+  if (view.phase === 'lobby') return <Lobby view={view} error={error} onError={setError} />
+  if (view.phase === 'countdown') return <Countdown view={view} />
+  if (view.phase === 'end') return <Debrief view={view} error={error} onError={setError} />
+  return <Play view={view} />
+}
+
+========================================================================
+FILE: src/vite-env.d.ts
+========================================================================
+
+/// <reference types="vite/client" />
+
+interface ImportMetaEnv {
+  readonly VITE_SOCKET_URL?: string
+  readonly VITE_XAI_API_KEY?: string
+  readonly VITE_GROK_TTS_URL?: string
+}
+
+interface ImportMeta {
+  readonly env: ImportMetaEnv
+}
+
+========================================================================
+FILE: src/index.css
+========================================================================
+
+:root {
+  --bg: #0d0906;
+  --panel: #17100b;
+  --panel-2: #1f1610;
+  --line: #3a2a1c;
+  --ink: #f6ead8;
+  --dim: #9b8168;
+  --air: #3ee0ff;
+  --power: #ffb020;
+  --storm: #ff6a22;
+  --alarm: #5cff9d;
+  --danger: #ff3b1f;
+  --ok: #6de08a;
+
+  color-scheme: dark;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+}
+
+#root {
+  min-height: 100svh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- layout ---------- */
+
+.app {
+  min-height: 100svh;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 12px 14px calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app.fit {
+  height: 100svh;
+  min-height: 100svh;
+  max-height: 100svh;
+  overflow: hidden;
+  gap: 8px;
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+}
+
+.app.fit .ctl {
+  min-height: 64px;
+  padding: 10px 8px;
+}
+
+.app.fit .ctl.shoot {
+  min-height: 68px;
+}
+
+.app.fit .ctl.shoot .state {
+  font-size: 20px;
+}
+
+.app.fit .recipe {
+  padding: 6px 12px 6px 28px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* Shared oxygen + power — every seated phone. */
+.vitals {
+  display: grid;
+  gap: 6px;
+}
+
+.vital-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.vital-head b {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.vital-track {
+  height: 8px;
+  background: #100b08;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.fill-air,
+.fill-power {
+  display: block;
+  height: 100%;
+  transition: width 0.12s linear;
+}
+
+.fill-air {
+  background: var(--air);
+}
+
+.fill-air.low {
+  background: var(--power);
+}
+
+.fill-air.critical,
+.fill-air.over {
+  background: var(--danger);
+}
+
+.fill-power {
+  background: var(--power);
+}
+
+.readout.slim {
+  padding: 8px 10px 10px;
+}
+
+.readout.slim .value.compact {
+  font-size: clamp(28px, 11vw, 48px);
+  margin: 2px 0 0;
+}
+
+.scope-slim {
+  max-height: 88px;
+  overflow: hidden;
+  margin: 4px 0 2px;
+}
+
+.scope-slim svg {
+  display: block;
+  width: 100%;
+  height: 88px;
+}
+
+.pad-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.app.fit .mix {
+  margin-top: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.who {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tag {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.clock.urgent {
+  color: var(--danger);
+}
+
+.grow {
+  flex: 1;
+}
+
+/* ---------- conflicting orders ---------- */
+
+.demand {
+  border: 2px solid var(--danger);
+  background: #2a0c08;
+  padding: 10px 12px;
+  text-align: center;
+  animation: pulse 0.7s steps(2, end) infinite;
+}
+
+.demand.warn {
+  border-color: var(--power);
+  background: #2a1a08;
+  animation: none;
+}
+
+.demand.fight .yell {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  color: #ffe8e2;
+}
+
+.demand.warn .yell {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--power);
+}
+
+.demand .gripe {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffb8a8;
+  margin-bottom: 4px;
+}
+
+/* ---------- big readouts ---------- */
+
+.readout {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 18px 16px 20px;
+  text-align: center;
+}
+
+.readout .label {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.readout .value {
+  font-size: clamp(64px, 26vw, 132px);
+  line-height: 0.9;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin: 6px 0 2px;
+}
+
+.readout .unit {
+  font-size: 0.36em;
+  vertical-align: super;
+  opacity: 0.75;
+}
+
+.readout .sub {
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.v-air {
+  color: var(--air);
+}
+.v-power {
+  color: var(--power);
+}
+.v-storm {
+  color: var(--storm);
+}
+.v-danger {
+  color: var(--danger);
+}
+.v-ok {
+  color: var(--ok);
+}
+
+.bar {
+  height: 12px;
+  background: #100b08;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  transition: width 0.12s linear;
+}
+
+/* Overpressure marker so Vega learns that high is not good. */
+.airtrack {
+  position: relative;
+}
+
+.airtrack .redzone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 8%;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 59, 31, 0.55) 0 4px,
+    transparent 4px 8px
+  );
+  pointer-events: none;
+}
+
+/* ---------- controls ---------- */
+
+.controls {
+  display: grid;
+  gap: 10px;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ctl {
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 14px 12px;
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  transition: transform 0.06s ease;
+}
+
+.ctl:active {
+  transform: scale(0.97);
+}
+
+.ctl .name {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.ctl .state {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.ctl.on {
+  border-color: var(--ok);
+  background: #14210f;
+}
+.ctl.on .state {
+  color: var(--ok);
+}
+
+.ctl.off {
+  border-color: #5a4126;
+}
+.ctl.off .state {
+  color: var(--dim);
+}
+
+.ctl.hot {
+  border-color: var(--danger);
+  background: #240d09;
+}
+
+.ctl.aimed {
+  box-shadow: 0 0 0 3px var(--air);
+  animation: pulse 0.55s steps(2, end) infinite;
+}
+.ctl.hot .state {
+  color: var(--danger);
+}
+
+.ctl.shoot {
+  min-height: 88px;
+  border-color: var(--storm);
+}
+
+.ctl.shoot .state {
+  color: var(--storm);
+  font-size: 26px;
+}
+
+.ctl.shoot.held {
+  border-color: var(--ok);
+  background: #14210f;
+}
+
+.ctl:disabled {
+  opacity: 0.45;
+}
+
+/* ---------- signal pad (the only line into Vega) ---------- */
+
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.sig {
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 12px 6px;
+  min-height: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.sig .mark {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.sig .name {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+/* Two calls per console instead of six, so they get the room. */
+.pad.owned {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.pad.owned .sig {
+  min-height: 0;
+  padding: 8px;
+}
+
+.sig .thumb {
+  width: 100%;
+  aspect-ratio: 1.2;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+
+.pad.owned .sig .name {
+  font-size: 12px;
+}
+
+.sig .why {
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+}
+
+.sig.hot {
+  border-color: var(--storm);
+  box-shadow: 0 0 0 2px var(--storm);
+}
+
+.sig:active {
+  transform: scale(0.96);
+}
+
+.recipe {
+  margin: 0;
+  padding: 8px 14px 8px 32px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+}
+
+.recipe li.now {
+  color: var(--storm);
+  font-weight: 800;
+}
+
+.recipe li.done {
+  color: var(--dim);
+  text-decoration: line-through;
+}
+
+.sig:disabled {
+  opacity: 0.32;
+}
+
+.cooldown {
+  height: 6px;
+  background: #100b08;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.cooldown > i {
+  display: block;
+  height: 100%;
+  background: var(--danger);
+  transition: width 0.1s linear;
+}
+
+.ackline {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  padding: 7px 8px;
+  border-radius: 3px;
+}
+
+.ackline.lit {
+  color: #08221a;
+  background: var(--ok);
+  border-color: var(--ok);
+  font-weight: 700;
+}
+
+/* ---------- Vega's inbox: named asks, stacked by priority ---------- */
+
+.inbox {
+  display: grid;
+  gap: 8px;
+}
+
+.incoming {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  padding: 8px;
+  animation: incoming-in 0.28s cubic-bezier(0.12, 0.82, 0.22, 1.05) both;
+}
+
+.incoming.pri-critical {
+  border-color: var(--danger);
+  background: #2a0c08;
+}
+
+.incoming.pri-high {
+  border-color: var(--storm);
+  background: #2a1408;
+}
+
+.incoming.pri-medium {
+  border-color: var(--air);
+  background: #08222b;
+}
+
+.incoming-thumb {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+
+.incoming-copy .who {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.incoming-copy .what {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+}
+
+.pri {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.pri-critical {
+  color: var(--danger);
+}
+
+.pri-high {
+  color: var(--storm);
+}
+
+.pri-medium {
+  color: var(--air);
+}
+
+.ctl .o2 {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.ctl .o2.up {
+  color: var(--ok);
+}
+
+.ctl .o2.down {
+  color: var(--danger);
+}
+
+.ctl .o2.flat {
+  color: var(--dim);
+}
+
+.mix {
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  line-height: 1.45;
+}
+
+@keyframes incoming-in {
+  0% {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes flashbox {
+  50% {
+    background: #0e3c4a;
+    border-color: #bff4ff;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    background: #3a1a0c;
+  }
+}
+
+.silent-note {
+  border: 1px dashed var(--line);
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--dim);
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- logs ---------- */
+
+.log {
+  border: 1px solid var(--line);
+  background: #0a0705;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  overflow: hidden;
+}
+
+/* Chen's log is the whole screen, so it takes the slack instead of a spacer. */
+.readout.fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.readout.fill .log {
+  flex: 1;
+}
+
+.log div {
+  color: var(--alarm);
+}
+
+.log div.old {
+  opacity: 0.4;
+}
+
+.log div.fresh {
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---------- cinematic backdrop ---------- */
+
+/*
+ * The plate sits on its own layer under a separate vignette layer rather than
+ * going into one background with a gradient over it, so the two can be tuned
+ * against each other without the gradient swallowing the photo.
+ */
+.stage {
+  position: relative;
+  isolation: isolate;
+}
+
+.stage::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: var(--plate);
+  background-size: cover;
+  background-position: center;
+  /* The plate is properly exposed now, so this only warms it rather than
+     trying to rescue it. */
+  filter: saturate(1.1) contrast(1.02);
+  opacity: 0.72;
+  z-index: -2;
+  pointer-events: none;
+}
+
+/* Vignette so overlaid text stays legible against the brightened plate. */
+.stage::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(125% 85% at 50% 40%, transparent 0%, rgba(13, 9, 6, 0.66) 88%),
+    linear-gradient(rgba(13, 9, 6, 0.42), rgba(13, 9, 6, 0.08) 38%, rgba(13, 9, 6, 0.88));
+  z-index: -1;
+  pointer-events: none;
+}
+
+/*
+ * Faint CRT scanlines over everything, for the console feel. This lives on the
+ * body and not on .stage because an element only has one ::before: when both
+ * rules targeted the same one, this shorthand `background` wiped out the art
+ * plate above and the screen rendered flat black.
+ */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.028) 0 1px,
+    transparent 1px 3px
+  );
+  z-index: 9;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* ---------- lobby / home ---------- */
+
+.hero {
+  text-align: center;
+  padding: 8px 0 0;
+}
+
+.hero h1 {
+  font-size: clamp(34px, 12vw, 54px);
+  letter-spacing: -0.02em;
+  margin: 4px 0 6px;
+  font-weight: 800;
+}
+
+.hero .pitch {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0 auto 4px;
+  max-width: 32ch;
+}
+
+.hero .pitch em {
+  color: var(--air);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  background: #0a0705;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 14px;
+  letter-spacing: 0.1em;
+}
+
+.field input:focus {
+  outline: 2px solid var(--air);
+  outline-offset: -1px;
+}
+
+.btn {
+  border: 2px solid var(--ink);
+  border-radius: 3px;
+  padding: 15px 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 13px;
+  width: 100%;
+}
+
+.btn.primary {
+  background: var(--ink);
+  color: #12100c;
+}
+
+.btn.ghost {
+  border-color: var(--line);
+  color: var(--dim);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+}
+
+.code {
+  font-size: clamp(44px, 18vw, 76px);
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-align: center;
+  color: var(--air);
+}
+
+.seats {
+  display: grid;
+  gap: 8px;
+}
+
+.seat {
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  text-align: left;
+}
+
+.seat .badge {
+  grid-row: span 2;
+  width: 44px;
+  height: 44px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.seat .name {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.seat .desc {
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+.seat.mine {
+  border-color: var(--ink);
+  background: #241a12;
+}
+
+.seat.taken {
+  opacity: 0.42;
+}
+
+.seat.vega {
+  color: var(--air);
+}
+.seat.engineer {
+  color: var(--power);
+}
+.seat.pilot {
+  color: var(--storm);
+}
+.seat.sparks {
+  color: var(--alarm);
+}
+.seat.board {
+  color: var(--dim);
+}
+
+.roster {
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+
+.roster .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dim);
+}
+
+.roster .row b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.notice {
+  border: 1px solid var(--danger);
+  background: #2a0f0a;
+  border-radius: 3px;
+  padding: 10px 12px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.brief {
+  border-left: 3px solid var(--air);
+  padding: 8px 0 8px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.brief .honor {
+  color: var(--danger);
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+/* ---------- debrief ---------- */
+
+.verdict {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.verdict .head {
+  font-size: clamp(30px, 11vw, 46px);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.verdict .why {
+  color: var(--dim);
+  margin-top: 10px;
+  font-size: 15px;
+}
+
+.recap {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.recap-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  text-align: center;
+}
+
+.recap-grid b {
+  display: block;
+  font-size: 22px;
+  margin-top: 2px;
+}
+
+.recap-calls,
+.recap-miss {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.recap-calls .acked {
+  color: var(--ok);
+}
+
+.recap-miss {
+  color: var(--danger);
+}
+
+.how {
+  border-left: 3px solid var(--storm);
+  padding: 4px 0 4px 12px;
+}
+
+.how ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+
+.count-shell {
+  justify-content: center;
+  text-align: center;
+  min-height: 100svh;
+}
+
+.count-num {
+  font-size: clamp(96px, 38vw, 180px);
+  font-weight: 800;
+  line-height: 0.9;
+  color: var(--storm);
+  text-shadow: 0 0 40px rgba(255, 106, 34, 0.45);
+}
+
+/* ---------- spectator board ---------- */
+
+.board {
+  max-width: 1100px;
+}
+
+.board .strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.board .readout .value {
+  font-size: clamp(40px, 8vw, 84px);
+}
+
+@media (min-width: 900px) {
+  .board .log {
+    min-height: 260px;
+    font-size: 15px;
+  }
+}
+
+/* Vega's whole screen reacts, because sound cannot reach her. */
+.strobe {
+  animation: strobe 0.34s steps(2, end) infinite;
+}
+
+@keyframes strobe {
+  50% {
+    background: #3a0f08;
+  }
+}
+
+.app.chaos-1 .demand.fight {
+  animation-duration: 0.5s;
+}
+
+.app.chaos-2 .demand.fight {
+  animation-duration: 0.32s;
+}
+
+.app.chaos-3 {
+  animation: rumble 0.16s steps(2) infinite;
+}
+
+.app.chaos-3 .demand.fight {
+  animation-duration: 0.18s;
+}
+
+.app.chaos-3 .clock {
+  color: var(--danger);
+}
+
+@keyframes rumble {
+  50% {
+    transform: translate(0.6px, -0.4px);
+  }
+}
+
+/* ---------- tutorial briefing ---------- */
+
+.coach {
+  border: 2px solid var(--air);
+  background: #08222b;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.coach .step {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--air);
+  margin-bottom: 6px;
+}
+
+.tut-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100svh;
+}
+
+.tut-shell .app {
+  min-height: 0;
+  flex: 1;
+}
+
+========================================================================
+FILE: src/net.ts
+========================================================================
+
+import { io, type Socket } from 'socket.io-client'
+import type { ClientAction, ClientView, StationId } from '@shared/types'
+
+const override = import.meta.env.VITE_SOCKET_URL
+
+let socket: Socket | null = null
+
+export function getSocket(): Socket {
+  if (!socket) {
+    const opts = {
+      path: '/socket.io',
+      transports: ['websocket', 'polling'],
+    }
+    socket = override ? io(override, opts) : io(opts)
+  }
+  return socket
+}
+
+export function playerKey(): string {
+  const existing = sessionStorage.getItem('crosstalk.pid')
+  if (existing) return existing
+  const id = crypto.randomUUID()
+  sessionStorage.setItem('crosstalk.pid', id)
+  return id
+}
+
+export function createHab(name: string) {
+  return ack<{ playerId: string; view: ClientView }>('create', { name, playerId: playerKey() })
+}
+
+export function joinHab(code: string, name: string) {
+  return ack<{ playerId: string; view: ClientView }>('join', {
+    code,
+    name,
+    playerId: playerKey(),
+  })
+}
+
+export function claim(role: StationId | null) {
+  return ack('claim', role)
+}
+
+export function setReady(ready: boolean) {
+  return ack('ready', ready)
+}
+
+export function renamePlayer(name: string) {
+  return ack('name', name)
+}
+
+export function startGame() {
+  return ack('start')
+}
+
+export function replayHab() {
+  return ack('replay')
+}
+
+let actionSink: ((action: ClientAction) => void) | null = null
+
+/** Tutorial intercepts the pad so a briefing can run with no hab. */
+export function setActionSink(fn: ((action: ClientAction) => void) | null) {
+  actionSink = fn
+}
+
+export function sendAction(action: ClientAction) {
+  if (actionSink) {
+    actionSink(action)
+    return Promise.resolve({ ok: true })
+  }
+  return ack('action', action)
+}
+
+function ack<T = { ok: boolean }>(event: string, ...args: unknown[]): Promise<T> {
+  return new Promise((resolve, reject) => {
+    getSocket().emit(event, ...args, (res: T & { ok?: boolean; error?: string }) => {
+      if (res && res.ok === false) reject(new Error(res.error || 'failed'))
+      else resolve(res)
+    })
+  })
+}
+
+========================================================================
+FILE: src/audio.ts
+========================================================================
+
+/**
+ * Hab audio. Speech is crew-only (the server never sends Vega a speak event).
+ * The urgency bed is local and only uses numbers this seat can already see —
+ * chaos, air, power, the storm clock — so it does not leak anyone else's fact.
+ *
+ * Everything is synthesized. No files, no key, no network.
+ */
+
+export type Fx =
+  | 'slam'
+  | 'send'
+  | 'click'
+  | 'fight'
+  | 'impact'
+  | 'ack'
+  | 'win'
+  | 'lose'
+  | 'tick'
+
+export interface Urgency {
+  rumble: number
+  pulse: number
+  alarm: number
+  storm: number
+  clock: boolean
+}
+
+let ctx: AudioContext | null = null
+let grokAvailable: boolean | null = null
+let master: GainNode | null = null
+let rumbleGain: GainNode | null = null
+let rumbleFilter: BiquadFilterNode | null = null
+let stormGain: GainNode | null = null
+let stormFilter: BiquadFilterNode | null = null
+const loops: { rumble?: AudioBufferSourceNode; storm?: AudioBufferSourceNode } = {}
+let pulseTimer: number | null = null
+let alarmTimer: number | null = null
+let clockTimer: number | null = null
+let alarmFlip = false
+let lastUrgency: Urgency | null = null
+let noise: AudioBuffer | null = null
+
+function audioCtx(): AudioContext {
+  ctx ??= new AudioContext()
+  return ctx
+}
+
+function out(): GainNode {
+  const c = audioCtx()
+  if (!master) {
+    master = c.createGain()
+    master.gain.value = 0.9
+    master.connect(c.destination)
+  }
+  return master
+}
+
+function brown(c: AudioContext, seconds = 3): AudioBuffer {
+  if (noise && noise.sampleRate === c.sampleRate) return noise
+  const n = Math.floor(c.sampleRate * seconds)
+  const buf = c.createBuffer(1, n, c.sampleRate)
+  const d = buf.getChannelData(0)
+  let last = 0
+  for (let i = 0; i < n; i++) {
+    last = (last + (Math.random() * 2 - 1) * 0.02) * 0.985
+    d[i] = last * 6
+  }
+  noise = buf
+  return buf
+}
+
+function loopNoise(filter: BiquadFilterNode): AudioBufferSourceNode {
+  const c = audioCtx()
+  const src = c.createBufferSource()
+  src.buffer = brown(c)
+  src.loop = true
+  src.connect(filter)
+  src.start()
+  return src
+}
+
+function env(
+  c: AudioContext,
+  node: AudioNode,
+  peak: number,
+  attack: number,
+  release: number,
+  start = c.currentTime,
+) {
+  const g = c.createGain()
+  g.gain.setValueAtTime(0.0001, start)
+  g.gain.exponentialRampToValueAtTime(Math.max(peak, 0.0002), start + attack)
+  g.gain.exponentialRampToValueAtTime(0.0001, start + attack + release)
+  node.connect(g).connect(out())
+  return g
+}
+
+function tone(
+  type: OscillatorType,
+  freq: number,
+  peak: number,
+  attack: number,
+  release: number,
+  slide?: number,
+) {
+  try {
+    const c = audioCtx()
+    const osc = c.createOscillator()
+    osc.type = type
+    const now = c.currentTime
+    osc.frequency.setValueAtTime(freq, now)
+    if (slide != null) osc.frequency.exponentialRampToValueAtTime(slide, now + attack + release)
+    env(c, osc, peak, attack, release, now)
+    osc.start(now)
+    osc.stop(now + attack + release + 0.02)
+  } catch {
+    /* context not up */
+  }
+}
+
+function burst(peak: number, hp: number, ms: number) {
+  try {
+    const c = audioCtx()
+    const src = c.createBufferSource()
+    src.buffer = brown(c)
+    const f = c.createBiquadFilter()
+    f.type = 'highpass'
+    f.frequency.value = hp
+    src.connect(f)
+    env(c, f, peak, 0.005, ms / 1000)
+    src.start()
+    src.stop(c.currentTime + ms / 1000 + 0.04)
+  } catch {
+    /* context not up */
+  }
+}
+
+export function unlockAudio() {
+  try {
+    const c = audioCtx()
+    void c.resume()
+    const u = new SpeechSynthesisUtterance(' ')
+    u.volume = 0
+    speechSynthesis.speak(u)
+  } catch {
+    /* some browsers hold out until a later gesture */
+  }
+  void fetch('/api/health')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((h: { voice?: string } | null) => {
+      if (h) grokAvailable = h.voice === 'grok'
+    })
+    .catch(() => {
+      /* first spoken line will find out */
+    })
+}
+
+/** Short squelch click, so a transmission feels like a transmission. */
+function squelch() {
+  tone('square', 1180, 0.045, 0.004, 0.07, 380)
+  burst(0.04, 900, 40)
+}
+
+function browserSpeak(text: string, voice: 'astronaut' | 'system') {
+  try {
+    speechSynthesis.cancel()
+    const u = new SpeechSynthesisUtterance(text)
+    // Faster, tighter — the hab is not giving a briefing.
+    u.rate = voice === 'astronaut' ? 1.12 : 1.22
+    u.pitch = voice === 'astronaut' ? 0.68 : 0.92
+    const voices = speechSynthesis.getVoices()
+    const en = voices.filter((v) => v.lang.startsWith('en'))
+    const pool = en.length ? en : voices
+    const preferred =
+      voice === 'astronaut'
+        ? pool.find((v) => /daniel|david|male|fred|arthur/i.test(v.name))
+        : pool.find((v) => /samantha|karen|zira|female|serena/i.test(v.name))
+    if (preferred) u.voice = preferred
+    speechSynthesis.speak(u)
+  } catch {
+    /* no speech engine */
+  }
+}
+
+async function grokSpeak(text: string): Promise<boolean> {
+  if (grokAvailable === false) return false
+  try {
+    const res = await fetch('/api/voice', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+    if (!res.ok) {
+      if (res.status === 501) grokAvailable = false
+      return false
+    }
+    grokAvailable = true
+    const buf = await res.arrayBuffer()
+    const c = audioCtx()
+    const decoded = await c.decodeAudioData(buf)
+    const src = c.createBufferSource()
+    src.buffer = decoded
+    const band = c.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.value = 1650
+    band.Q.value = 0.85
+    const drive = c.createGain()
+    drive.gain.value = 1.45
+    src.connect(band).connect(drive).connect(out())
+    src.start()
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function speak(text: string, voice: 'astronaut' | 'system') {
+  if (!text.trim()) return
+  squelch()
+  const done = await grokSpeak(text)
+  if (!done) browserSpeak(text, voice)
+}
+
+function ensureBeds() {
+  const c = audioCtx()
+  if (c.state === 'suspended') void c.resume()
+  if (!rumbleGain) {
+    rumbleFilter = c.createBiquadFilter()
+    rumbleFilter.type = 'lowpass'
+    rumbleFilter.frequency.value = 90
+    rumbleFilter.Q.value = 0.7
+    rumbleGain = c.createGain()
+    rumbleGain.gain.value = 0.0001
+    rumbleFilter.connect(rumbleGain).connect(out())
+    loops.rumble = loopNoise(rumbleFilter)
+  }
+  if (!stormGain) {
+    stormFilter = c.createBiquadFilter()
+    stormFilter.type = 'bandpass'
+    stormFilter.frequency.value = 220
+    stormFilter.Q.value = 0.9
+    stormGain = c.createGain()
+    stormGain.gain.value = 0.0001
+    stormFilter.connect(stormGain).connect(out())
+    loops.storm = loopNoise(stormFilter)
+  }
+}
+
+function stopTimer(id: number | null) {
+  if (id != null) window.clearTimeout(id)
+}
+
+function kick() {
+  const level = lastUrgency?.pulse ?? 0
+  if (level < 0.08) return
+  const peak = 0.07 + level * 0.16
+  tone('sine', 78, peak, 0.004, 0.11, 36)
+  window.setTimeout(() => tone('sine', 62, peak * 0.7, 0.003, 0.09, 30), 88)
+}
+
+function klaxon() {
+  const level = lastUrgency?.alarm ?? 0
+  if (level < 0.08) return
+  alarmFlip = !alarmFlip
+  const freq = alarmFlip ? 880 : 620
+  tone('square', freq, 0.03 + level * 0.055, 0.004, 0.09)
+}
+
+function clockClick() {
+  if (!lastUrgency?.clock) return
+  tone('square', 1400, 0.045, 0.002, 0.04)
+  burst(0.03, 1800, 18)
+}
+
+function armPulse() {
+  stopTimer(pulseTimer)
+  const beat = 1.08 - 0.58 * (lastUrgency?.pulse ?? 0)
+  kick()
+  pulseTimer = window.setTimeout(armPulse, Math.max(0.42, beat) * 1000)
+}
+
+function armAlarm() {
+  stopTimer(alarmTimer)
+  if ((lastUrgency?.alarm ?? 0) < 0.08) {
+    alarmTimer = window.setTimeout(armAlarm, 400)
+    return
+  }
+  klaxon()
+  const gap = 360 - 140 * (lastUrgency?.alarm ?? 0)
+  alarmTimer = window.setTimeout(armAlarm, Math.max(160, gap))
+}
+
+function armClock() {
+  stopTimer(clockTimer)
+  clockClick()
+  clockTimer = window.setTimeout(armClock, 1000)
+}
+
+export function setUrgency(next: Urgency | null) {
+  lastUrgency = next
+  if (!next) {
+    try {
+      const c = ctx
+      if (rumbleGain && c) rumbleGain.gain.linearRampToValueAtTime(0.0001, c.currentTime + 0.2)
+      if (stormGain && c) stormGain.gain.linearRampToValueAtTime(0.0001, c.currentTime + 0.2)
+    } catch {
+      /* tearing down */
+    }
+    stopTimer(pulseTimer)
+    stopTimer(alarmTimer)
+    stopTimer(clockTimer)
+    pulseTimer = alarmTimer = clockTimer = null
+    return
+  }
+
+  try {
+    ensureBeds()
+    const c = audioCtx()
+    const now = c.currentTime
+    rumbleGain!.gain.cancelScheduledValues(now)
+    rumbleGain!.gain.linearRampToValueAtTime(0.0001 + next.rumble * 0.14, now + 0.12)
+    rumbleFilter!.frequency.linearRampToValueAtTime(70 + next.rumble * 140, now + 0.12)
+    stormGain!.gain.cancelScheduledValues(now)
+    stormGain!.gain.linearRampToValueAtTime(0.0001 + next.storm * 0.11, now + 0.16)
+    stormFilter!.frequency.linearRampToValueAtTime(180 + next.storm * 520, now + 0.16)
+    if (pulseTimer == null) armPulse()
+    if (alarmTimer == null) armAlarm()
+    if (next.clock && clockTimer == null) armClock()
+    if (!next.clock) {
+      stopTimer(clockTimer)
+      clockTimer = null
+    }
+  } catch {
+    /* gesture has not unlocked us yet */
+  }
+}
+
+export function playFx(kind: Fx) {
+  try {
+    void audioCtx().resume()
+  } catch {
+    /* ignore */
+  }
+  switch (kind) {
+    case 'slam':
+      burst(0.28, 120, 90)
+      tone('sine', 110, 0.28, 0.003, 0.22, 42)
+      tone('square', 220, 0.06, 0.002, 0.08, 90)
+      break
+    case 'send':
+      squelch()
+      burst(0.1, 700, 50)
+      tone('sawtooth', 540, 0.05, 0.003, 0.1, 180)
+      break
+    case 'click':
+      tone('square', 240, 0.035, 0.002, 0.03)
+      break
+    case 'fight':
+      tone('square', 920, 0.07, 0.003, 0.08)
+      window.setTimeout(() => tone('square', 640, 0.07, 0.003, 0.1), 90)
+      burst(0.08, 400, 60)
+      break
+    case 'impact':
+      burst(0.32, 80, 160)
+      tone('sine', 55, 0.32, 0.004, 0.45, 22)
+      tone('sawtooth', 140, 0.08, 0.002, 0.18, 40)
+      break
+    case 'ack':
+      tone('sine', 660, 0.05, 0.004, 0.08)
+      tone('sine', 990, 0.04, 0.006, 0.1)
+      break
+    case 'tick':
+      clockClick()
+      break
+    case 'win':
+      tone('sine', 392, 0.08, 0.01, 0.18)
+      window.setTimeout(() => tone('sine', 523, 0.08, 0.01, 0.2), 140)
+      window.setTimeout(() => tone('sine', 659, 0.1, 0.01, 0.35), 280)
+      break
+    case 'lose':
+      burst(0.12, 200, 80)
+      tone('sawtooth', 180, 0.1, 0.01, 0.5, 55)
+      window.setTimeout(() => tone('sine', 70, 0.12, 0.01, 0.6, 28), 80)
+      break
+  }
+}
+
+========================================================================
+FILE: src/haptics.ts
+========================================================================
+
+/** Vega's glass also slams. This is the thumb she can still feel. */
+export function buzz(pattern: number | number[] = [90, 60, 90]) {
+  try {
+    navigator.vibrate?.(pattern)
+  } catch {
+    /* desktop, or a browser that refuses */
+  }
+}
+
+========================================================================
+FILE: src/useUrgency.ts
+========================================================================
+
+import { useEffect, useRef } from 'react'
+import type { ClientView } from '@shared/types'
+import { playFx, setUrgency, type Urgency } from './audio'
+
+/** Strip countdown digits so a live clock does not restrike the fight sting every second. */
+function orderKind(text: string | null | undefined): string {
+  if (!text) return ''
+  return text.replace(/\d+/g, '#')
+}
+
+function bedFor(view: ClientView): Urgency {
+  const role = view.you.role
+  const chaos = view.chaos ?? 0
+  const next: Urgency = {
+    rumble: 0.18 + chaos * 0.82,
+    pulse: 0.12 + chaos * 0.7,
+    alarm: 0,
+    storm: 0,
+    clock: false,
+  }
+
+  if (role === 'vega') {
+    if (view.airBand === 'low') next.pulse = Math.max(next.pulse, 0.5)
+    if (view.airBand === 'critical') {
+      next.pulse = 0.95
+      next.alarm = 0.75
+    }
+    if (view.airBand === 'over') {
+      next.pulse = 0.88
+      next.alarm = 1
+    }
+    if (view.order?.tone === 'fight') next.alarm = Math.max(next.alarm, 0.55)
+  }
+
+  if (role === 'engineer') {
+    const power = view.power ?? 100
+    if (power < 40) next.pulse = Math.max(next.pulse, 0.48)
+    if (power < 22) next.alarm = Math.max(next.alarm, 0.55)
+    if (view.order?.tone === 'fight') next.alarm = Math.max(next.alarm, 0.7)
+  }
+
+  if (role === 'pilot') {
+    if (view.stormActive) {
+      next.storm = 1
+      next.alarm = Math.max(next.alarm, 0.45)
+      next.rumble = Math.max(next.rumble, 0.85)
+    } else if (view.stormEta != null) {
+      next.storm = 1 - Math.min(1, view.stormEta / 16)
+      if (view.stormEta <= 5) next.alarm = Math.max(next.alarm, 0.85)
+      next.pulse = Math.max(next.pulse, 0.35 + next.storm * 0.5)
+    }
+    if (view.order?.tone === 'fight') next.alarm = Math.max(next.alarm, 0.5)
+  }
+
+  if (role === 'sparks') {
+    if (view.order?.tone === 'fight') next.alarm = Math.max(next.alarm, 0.72)
+    if (view.alarms.length) next.pulse = Math.max(next.pulse, 0.4)
+  }
+
+  if (role !== 'vega' && view.timeLeft != null && view.timeLeft <= 15) {
+    next.clock = true
+    next.rumble = Math.max(next.rumble, 0.75)
+    next.pulse = Math.max(next.pulse, 0.8)
+    next.alarm = Math.max(next.alarm, 0.35)
+  }
+
+  return next
+}
+
+/** Drive the urgency bed from whatever this seat is allowed to see. */
+export function useUrgency(view: ClientView | null) {
+  const lastFight = useRef('')
+  const lastAlarm = useRef('')
+  const lastStorm = useRef(false)
+  const lastAck = useRef<number | null>(null)
+
+  useEffect(() => {
+    if (!view || (view.phase !== 'play' && view.phase !== 'countdown')) {
+      setUrgency(null)
+      return
+    }
+    if (view.phase === 'countdown') {
+      setUrgency({ rumble: 0.28, pulse: 0.5, alarm: 0.12, storm: 0, clock: false })
+      return
+    }
+    setUrgency(bedFor(view))
+  }, [
+    view,
+    view?.phase,
+    view?.chaos,
+    view?.airBand,
+    view?.power,
+    view?.stormEta,
+    view?.stormActive,
+    view?.timeLeft,
+    view?.order?.tone,
+    view?.you.role,
+  ])
+
+  useEffect(() => () => setUrgency(null), [])
+
+  useEffect(() => {
+    if (!view || view.phase !== 'play') return
+    const kind = orderKind(view.order?.text)
+    if (view.order?.tone === 'fight' && kind && kind !== lastFight.current) {
+      playFx('fight')
+    }
+    lastFight.current = kind
+  }, [view, view?.order?.text, view?.order?.tone, view?.phase])
+
+  useEffect(() => {
+    if (!view || view.you.role !== 'sparks' || view.phase !== 'play') return
+    const newest = view.alarms.at(-1) ?? ''
+    if (newest && newest !== lastAlarm.current) playFx('fight')
+    lastAlarm.current = newest
+  }, [view, view?.alarms, view?.phase, view?.you.role])
+
+  useEffect(() => {
+    if (!view || view.you.role !== 'pilot' || view.phase !== 'play') return
+    if (view.stormActive && !lastStorm.current) playFx('impact')
+    lastStorm.current = !!view.stormActive
+  }, [view, view?.stormActive, view?.phase, view?.you.role])
+
+  useEffect(() => {
+    if (!view || view.phase !== 'play') return
+    if (view.ackAgeMs != null && view.ackAgeMs < 800 && lastAck.current == null) {
+      playFx('ack')
+    }
+    lastAck.current = view.ackAgeMs
+  }, [view, view?.ackAgeMs, view?.phase])
+}
+
+========================================================================
+FILE: src/components/Frame.tsx
+========================================================================
+
+import type { ReactNode } from 'react'
+import { unlockAudio } from '../audio'
+
+export function Frame({
+  who,
+  tag,
+  timeLeft,
+  children,
+  strobe,
+  chaos = 0,
+}: {
+  who: string
+  tag: string
+  timeLeft: number | null
+  children: ReactNode
+  strobe?: boolean
+  chaos?: number
+}) {
+  const secs = timeLeft == null ? null : Math.ceil(timeLeft)
+  const band = chaos >= 0.75 ? '3' : chaos >= 0.45 ? '2' : chaos >= 0.2 ? '1' : '0'
+  return (
+    <div
+      className={`app fit chaos-${band}${strobe || chaos >= 0.62 ? ' strobe' : ''}`}
+      onPointerDown={unlockAudio}
+    >
+      <div className="topbar">
+        <div>
+          <div className="who">{who}</div>
+          <div className="tag">{tag}</div>
+        </div>
+        {secs != null ? (
+          <div className={`clock${secs <= 15 ? ' urgent' : ''}`}>
+            {String(Math.floor(secs / 60))}:{String(secs % 60).padStart(2, '0')}
+          </div>
+        ) : null}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/components/ShipBars.tsx
+========================================================================
+
+import type { AirBand } from '@shared/types'
+
+function clamp(n: number) {
+  return Math.max(0, Math.min(100, n))
+}
+
+/** Cabin oxygen and reactor power — every seat sees the same two bars. */
+export function ShipBars({
+  air,
+  airBand,
+  power,
+}: {
+  air: number
+  airBand: AirBand
+  power: number
+}) {
+  const o2 = clamp(air)
+  const pwr = clamp(power)
+  const airTone = airBand === 'ok' ? 'v-air' : 'v-danger'
+  const pwrTone = pwr < 25 ? 'v-danger' : pwr < 50 ? 'v-power' : 'v-ok'
+
+  return (
+    <div className="vitals" role="group" aria-label="cabin oxygen and reactor power">
+      <div className="vital">
+        <div className="vital-head">
+          <span>oxygen</span>
+          <b className={airTone}>{Math.round(air)}%</b>
+        </div>
+        <div className={`vital-track airtrack band-${airBand}`}>
+          <i className={`fill-air ${airBand}`} style={{ width: `${o2}%` }} />
+          <span className="redzone" aria-hidden="true" />
+        </div>
+      </div>
+      <div className="vital">
+        <div className="vital-head">
+          <span>power</span>
+          <b className={pwrTone}>{Math.round(power)}%</b>
+        </div>
+        <div className="vital-track">
+          <i className="fill-power" style={{ width: `${pwr}%` }} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/components/Demand.tsx
+========================================================================
+
+import type { ClientView } from '@shared/types'
+
+/** The thing that makes people shout at each other. One seat's order fights the next. */
+export function Demand({ view }: { view: ClientView }) {
+  if (!view.order && !view.gripe) return null
+  return (
+    <div className={`demand${view.order?.tone === 'fight' ? ' fight' : view.order || view.gripe ? ' warn' : ''}`}>
+      {view.gripe ? <div className="gripe">{view.gripe}</div> : null}
+      {view.order ? <div className="yell">{view.order.text}</div> : null}
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/components/IncomingSlam.tsx
+========================================================================
+
+import { useEffect, useRef } from 'react'
+import { PRIORITY_RANK, signalArt, signalAsk } from '@shared/content'
+import type { ClientView } from '@shared/types'
+import { playFx } from '../audio'
+import { buzz } from '../haptics'
+
+/**
+ * Oxygen's inbox. One notice at a time so the switches stay on screen.
+ * Flip the matching switch — that is the whole reply.
+ */
+export function IncomingSlam({ view }: { view: ClientView }) {
+  const inbox = view.signals
+    .filter((s) => s.fresh)
+    .slice()
+    .sort((a, b) => PRIORITY_RANK[a.priority] - PRIORITY_RANK[b.priority] || b.at - a.at)
+  const top = inbox[0]
+  const extra = inbox.length - 1
+  const lastId = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (top && lastId.current !== top.id) {
+      lastId.current = top.id
+      playFx('slam')
+      buzz([90, 60, 90, 60, 220])
+    }
+  }, [top])
+
+  if (!top) return null
+
+  return (
+    <div className="inbox" role="status">
+      <div key={top.id} className={`incoming pri-${top.priority}`}>
+        <img className="incoming-thumb" src={signalArt(top.signal)} alt="" />
+        <div className="incoming-copy">
+          <div className={`pri pri-${top.priority}`}>
+            {top.priority}
+            {extra > 0 ? ` · +${extra}` : ''}
+          </div>
+          <div className="who">{top.fromName}</div>
+          <div className="what">{signalAsk(top.signal)}</div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/components/SignalPad.tsx
+========================================================================
+
+import { SIGNAL_COOLDOWN_MS, seatedName, signalArt, signalLabel, signalsFor } from '@shared/content'
+import type { ClientView, CrewId, SignalId } from '@shared/types'
+import { playFx } from '../audio'
+import { sendAction } from '../net'
+
+/**
+ * The only channel into oxygen. Each crew member's pad holds just the two calls
+ * their console owns — the server rejects anyone else's, so there is nothing to
+ * gain from showing them.
+ */
+export function SignalPad({
+  view,
+  crew,
+  focus,
+}: {
+  view: ClientView
+  crew: CrewId
+  /** Which call to light up. Navigation can light both — it is a choice. */
+  focus?: SignalId | readonly SignalId[]
+}) {
+  const mine = signalsFor(crew)
+  const cd = view.signalCooldownMs ?? 0
+  const locked = cd > 0
+  const max = SIGNAL_COOLDOWN_MS * (1 - 0.4 * (view.chaos ?? 0))
+  const pct = Math.min(100, (cd / Math.max(max, 1)) * 100)
+  const oxygen = seatedName(view.players, 'vega', 'oxygen')
+  const sawIt = view.ackAgeMs != null && view.ackAgeMs < 4000
+  const hot = (id: SignalId) =>
+    focus == null ? false : Array.isArray(focus) ? focus.includes(id) : focus === id
+
+  return (
+    <div className="pad-wrap">
+      <div className="tag" style={{ textAlign: 'center' }}>
+        {locked ? `pad ${(cd / 1000).toFixed(1)}s` : `send ${oxygen} a picture`}
+      </div>
+      <div className="cooldown">
+        <i style={{ width: `${pct}%` }} />
+      </div>
+      <div className="pad owned">
+        {mine.map((s) => (
+          <button
+            key={s.id}
+            className={`sig${hot(s.id) ? ' hot' : ''}`}
+            disabled={locked}
+            onClick={() => {
+              playFx('send')
+              void sendAction({ type: 'signal', signal: s.id })
+            }}
+          >
+            <img className="thumb" src={signalArt(s.id)} alt="" />
+            <span className="name">{s.label}</span>
+            <span className="why">{s.hint}</span>
+          </button>
+        ))}
+      </div>
+      {view.lastSignal ? (
+        <div className={`ackline${sawIt ? ' lit' : ''}`}>
+          {sawIt ? (
+            <>{oxygen} flipped {signalLabel(view.lastSignal)}</>
+          ) : (
+            <>sent {signalLabel(view.lastSignal)} — no confirmation yet</>
+          )}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/components/StormScope.tsx
+========================================================================
+
+/** Idris's scope. The dust front closes on the hab as the clock runs down. */
+export function StormScope({
+  eta,
+  active,
+  lead,
+}: {
+  eta: number | null
+  active: boolean
+  lead: number
+}) {
+  const progress = eta == null ? 0 : active ? 1 : 1 - Math.min(1, eta / Math.max(lead, 1))
+  const frontY = 18 + progress * 96
+
+  return (
+    <svg viewBox="0 0 220 160" role="img" aria-label="Dust storm scope">
+      <defs>
+        <linearGradient id="dust" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ff6a22" stopOpacity="0.05" />
+          <stop offset="70%" stopColor="#ff6a22" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#ff3b1f" stopOpacity="0.85" />
+        </linearGradient>
+        <clipPath id="scope">
+          <rect x="8" y="8" width="204" height="144" rx="3" />
+        </clipPath>
+      </defs>
+
+      <rect x="8" y="8" width="204" height="144" rx="3" fill="#0a0705" stroke="#3a2a1c" />
+
+      <g clipPath="url(#scope)">
+        {[40, 80, 120].map((y) => (
+          <line key={y} x1="8" y1={y} x2="212" y2={y} stroke="#1e150e" />
+        ))}
+        {[60, 110, 160].map((x) => (
+          <line key={x} x1={x} y1="8" x2={x} y2="152" stroke="#1e150e" />
+        ))}
+
+        {eta != null ? (
+          <>
+            <rect x="8" y={frontY - 46} width="204" height="46" fill="url(#dust)" />
+            <path
+              d={`M 8 ${frontY} Q 58 ${frontY - 12} 110 ${frontY} T 212 ${frontY}`}
+              fill="none"
+              stroke={active ? '#ff3b1f' : '#ff6a22'}
+              strokeWidth="3"
+            />
+            {Array.from({ length: 18 }, (_, i) => (
+              <circle
+                key={i}
+                cx={14 + (i % 9) * 22 + (i > 8 ? 8 : 0)}
+                cy={frontY - 8 - (i % 4) * 8 - (i > 8 ? 6 : 0)}
+                r={1.3 + (i % 4) * 0.55}
+                fill="#ffb98d"
+                opacity="0.7"
+              />
+            ))}
+          </>
+        ) : (
+          <text x="110" y="80" textAnchor="middle" fill="#5e4b38" fontSize="11" letterSpacing="3">
+            SKY CLEAR
+          </text>
+        )}
+
+        {/* The hab */}
+        <g transform="translate(110 132)">
+          <circle r="11" fill="#12211f" stroke="#3ee0ff" strokeWidth="2" />
+          <circle r="3" fill="#3ee0ff" />
+          <line x1="-18" y1="0" x2="-13" y2="0" stroke="#3ee0ff" strokeWidth="2" />
+          <line x1="13" y1="0" x2="18" y2="0" stroke="#3ee0ff" strokeWidth="2" />
+        </g>
+      </g>
+    </svg>
+  )
+}
+
+========================================================================
+FILE: src/components/AirGauge.tsx
+========================================================================
+
+import type { AirBand } from '@shared/types'
+
+const START = -220
+const SWEEP = 260
+
+function polar(cx: number, cy: number, r: number, deg: number) {
+  const rad = (deg * Math.PI) / 180
+  return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) }
+}
+
+function arc(cx: number, cy: number, r: number, from: number, to: number) {
+  const a = polar(cx, cy, r, from)
+  const b = polar(cx, cy, r, to)
+  const large = Math.abs(to - from) > 180 ? 1 : 0
+  return `M ${a.x} ${a.y} A ${r} ${r} 0 ${large} 1 ${b.x} ${b.y}`
+}
+
+const BAND_COLOR: Record<AirBand, string> = {
+  ok: '#3ee0ff',
+  low: '#ffb020',
+  critical: '#ff3b1f',
+  over: '#ff3b1f',
+}
+
+/**
+ * Vega's only instrument. The red hatching at the top of the dial is the whole
+ * lesson: more air is not better, and nobody can tell her that out loud.
+ */
+export function AirGauge({ air, band }: { air: number; band: AirBand }) {
+  const cx = 110
+  const cy = 108
+  const r = 84
+  const pct = Math.max(0, Math.min(100, air))
+  const needle = START + (SWEEP * pct) / 100
+  const tip = polar(cx, cy, r - 12, needle)
+  const tail = polar(cx, cy, 14, needle + 180)
+  const color = BAND_COLOR[band]
+
+  return (
+    <svg viewBox="0 0 220 200" role="img" aria-label={`Air ${Math.round(air)} percent`}>
+      <defs>
+        <linearGradient id="dial" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#20160f" />
+          <stop offset="100%" stopColor="#0c0806" />
+        </linearGradient>
+        <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+          <feGaussianBlur stdDeviation="4" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <circle cx={cx} cy={cy} r={r + 14} fill="url(#dial)" stroke="#3a2a1c" strokeWidth="2" />
+
+      <path
+        d={arc(cx, cy, r, START, START + SWEEP)}
+        fill="none"
+        stroke="#2b1f16"
+        strokeWidth="14"
+        strokeLinecap="round"
+      />
+      {/* Safe span */}
+      <path
+        d={arc(cx, cy, r, START + SWEEP * 0.18, START + SWEEP * 0.92)}
+        fill="none"
+        stroke="#123642"
+        strokeWidth="14"
+      />
+      {/* Suffocation end */}
+      <path
+        d={arc(cx, cy, r, START, START + SWEEP * 0.18)}
+        fill="none"
+        stroke="#4a1109"
+        strokeWidth="14"
+      />
+      {/* Overpressure end */}
+      <path
+        d={arc(cx, cy, r, START + SWEEP * 0.92, START + SWEEP)}
+        fill="none"
+        stroke="#ff3b1f"
+        strokeWidth="14"
+      />
+
+      <path
+        d={arc(cx, cy, r, START, needle)}
+        fill="none"
+        stroke={color}
+        strokeWidth="14"
+        strokeLinecap="round"
+        filter="url(#glow)"
+        opacity="0.95"
+      />
+
+      {Array.from({ length: 11 }, (_, i) => {
+        const deg = START + (SWEEP * i) / 10
+        const outer = polar(cx, cy, r - 22, deg)
+        const inner = polar(cx, cy, r - (i % 5 === 0 ? 34 : 29), deg)
+        return (
+          <line
+            key={i}
+            x1={outer.x}
+            y1={outer.y}
+            x2={inner.x}
+            y2={inner.y}
+            stroke="#7d6a52"
+            strokeWidth={i % 5 === 0 ? 2.5 : 1.5}
+          />
+        )
+      })}
+
+      <line
+        x1={tail.x}
+        y1={tail.y}
+        x2={tip.x}
+        y2={tip.y}
+        stroke={color}
+        strokeWidth="4"
+        strokeLinecap="round"
+        filter="url(#glow)"
+      />
+      <circle cx={cx} cy={cy} r="7" fill="#0c0806" stroke={color} strokeWidth="3" />
+    </svg>
+  )
+}
+
+========================================================================
+FILE: src/components/PowerCells.tsx
+========================================================================
+
+/** Rook's reactor. Segmented so a glance reads as "how many bars left". */
+export function PowerCells({ power }: { power: number }) {
+  const cells = 12
+  const lit = Math.round((Math.max(0, Math.min(100, power)) / 100) * cells)
+  return (
+    <svg viewBox="0 0 220 74" role="img" aria-label={`Power ${Math.round(power)} percent`}>
+      <defs>
+        <filter id="cellglow" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation="2.4" result="b" />
+          <feMerge>
+            <feMergeNode in="b" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      {Array.from({ length: cells }, (_, i) => {
+        const on = i < lit
+        const x = 8 + i * 17.5
+        const danger = lit <= 3
+        const warn = lit <= 6
+        const color = danger ? '#ff3b1f' : warn ? '#ffb020' : '#ffd479'
+        return (
+          <g key={i}>
+            <rect x={x} y="10" width="13" height="42" rx="1.5" fill="#130d09" stroke="#3a2a1c" />
+            {on ? (
+              <rect
+                x={x + 2}
+                y="12"
+                width="9"
+                height="38"
+                rx="1"
+                fill={color}
+                filter="url(#cellglow)"
+                opacity={0.92}
+              />
+            ) : null}
+          </g>
+        )
+      })}
+      <line x1="8" y1="60" x2="212" y2="60" stroke="#3a2a1c" />
+      <text x="8" y="71" fill="#7d6a52" fontSize="9" letterSpacing="2">
+        EMPTY
+      </text>
+      <text x="212" y="71" textAnchor="end" fill="#7d6a52" fontSize="9" letterSpacing="2">
+        FULL
+      </text>
+    </svg>
+  )
+}
+
+========================================================================
+FILE: src/roles/Vega.tsx
+========================================================================
+
+import type { ClientView, SignalId, ValveId } from '@shared/types'
+import { Demand } from '../components/Demand'
+import { Frame } from '../components/Frame'
+import { IncomingSlam } from '../components/IncomingSlam'
+import { ShipBars } from '../components/ShipBars'
+import { playFx } from '../audio'
+import { buzz } from '../haptics'
+import { sendAction } from '../net'
+
+function aims(hint: SignalId | null, which: SignalId | SignalId[]) {
+  if (!hint) return false
+  return Array.isArray(which) ? which.includes(hint) : hint === which
+}
+
+function o2(n: number | undefined) {
+  if (n == null) return null
+  const sign = n > 0 ? '+' : ''
+  const tone = n > 0 ? 'up' : n < 0 ? 'down' : 'flat'
+  return <span className={`o2 ${tone}`}>{sign}{n}%</span>
+}
+
+export function Vega({ view }: { view: ClientView }) {
+  const air = view.air ?? 0
+  const band = view.airBand ?? 'ok'
+  const parts = view.airParts
+  const hint = view.aim
+  const danger = band === 'critical' || band === 'over'
+
+  return (
+    <Frame
+      who={view.you.name}
+      tag="oxygen — flip the lit switch"
+      timeLeft={null}
+      strobe={danger}
+      chaos={view.chaos}
+    >
+      <ShipBars air={air} airBand={band} power={view.power ?? 0} />
+      <IncomingSlam view={view} />
+      <Demand view={view} />
+      {parts ? (
+        <div className="mix">
+          pump {parts.pump} · port {parts.port} · stbd {parts.starboard} · shields {parts.shields} ·
+          guns {parts.guns} · cabin {parts.cabin}
+        </div>
+      ) : null}
+
+      <div className="controls">
+        <div className="pair">
+          {(['port', 'starboard'] as ValveId[]).map((valve) => {
+            const sealed = view.valves?.[valve] === 'sealed'
+            const part = valve === 'port' ? parts?.port : parts?.starboard
+            return (
+              <button
+                key={valve}
+                className={`ctl ${sealed ? 'off' : 'on'}${aims(hint, valve === 'port' ? 'seal-port' : 'seal-starboard') ? ' aimed' : ''}`}
+                onClick={() => {
+                  playFx('click')
+                  void sendAction({ type: 'valve', valve, sealed: !sealed })
+                }}
+              >
+                <span className="name">{valve === 'port' ? 'port' : 'stbd'}</span>
+                <span className="state">{sealed ? 'SEALED' : 'OPEN'}</span>
+                {o2(part)}
+              </button>
+            )
+          })}
+        </div>
+        <div className="pair">
+          <button
+            className={`ctl ${view.pumpOn ? (band === 'over' ? 'hot' : 'on') : 'off'}${aims(hint, ['pump-off', 'pump-on']) ? ' aimed' : ''}`}
+            onClick={() => {
+              playFx('click')
+              void sendAction({ type: 'pump', on: !view.pumpOn })
+            }}
+          >
+            <span className="name">pump</span>
+            <span className="state">{view.pumpOn ? 'RUNNING' : 'OFF'}</span>
+            {o2(parts?.pump)}
+          </button>
+          <button
+            className={`ctl ${view.shieldsOn ? 'on' : 'off'}${aims(hint, 'shields-on') ? ' aimed' : ''}`}
+            onClick={() => {
+              playFx('click')
+              void sendAction({ type: 'shields', on: !view.shieldsOn })
+            }}
+          >
+            <span className="name">shields</span>
+            <span className="state">{view.shieldsOn ? 'UP' : 'DOWN'}</span>
+            {o2(parts?.shields)}
+          </button>
+        </div>
+        <button
+          className={`ctl shoot${view.shot ? ' held' : ''}${aims(hint, 'shoot') ? ' aimed' : ''}`}
+          onClick={() => {
+            playFx('click')
+            buzz(40)
+            void sendAction({ type: 'shoot' })
+          }}
+        >
+          <span className="name">guns</span>
+          <span className="state">{view.shot ? 'FIRED' : 'SHOOT'}</span>
+          {o2(parts?.guns)}
+        </button>
+      </div>
+    </Frame>
+  )
+}
+
+========================================================================
+FILE: src/roles/Engineer.tsx
+========================================================================
+
+import type { ClientView } from '@shared/types'
+import { Demand } from '../components/Demand'
+import { Frame } from '../components/Frame'
+import { ShipBars } from '../components/ShipBars'
+import { SignalPad } from '../components/SignalPad'
+
+export function Engineer({ view }: { view: ClientView }) {
+  const power = view.power ?? 0
+  const draw = view.draw ?? 0
+  const load = draw >= 1.2 ? 'spiking' : draw >= 0.6 ? 'heavy' : 'quiet'
+  const yell = view.order?.text ?? ''
+  const sentOff = view.lastSignal === 'pump-off'
+  const killNow = load === 'spiking' || /OFF|KILL|DUMP|STEALING/i.test(yell)
+  const onNow = sentOff && load === 'quiet' && power > 28
+  const focus = killNow ? 'pump-off' : onNow ? 'pump-on' : undefined
+
+  return (
+    <Frame
+      who={view.you.name}
+      tag="power — voltage is yours"
+      timeLeft={view.timeLeft}
+      chaos={view.chaos}
+    >
+      <ShipBars air={view.air ?? 0} airBand={view.airBand ?? 'ok'} power={power} />
+      <Demand view={view} />
+      <div className={`readout slim${load === 'spiking' ? ' hot' : ''}`}>
+        <div className="label">voltage</div>
+        <div className={`sub${load === 'spiking' ? ' v-danger' : ''}`}>
+          {load === 'spiking'
+            ? 'spiking — send PUMP OFF'
+            : load === 'heavy'
+              ? 'heavy'
+              : 'quiet'}
+        </div>
+      </div>
+      <ol className="recipe">
+        <li className={killNow ? 'now' : sentOff ? 'done' : ''}>voltage spikes → PUMP OFF</li>
+        <li className={onNow ? 'now' : ''}>voltage quiet + air dying → PUMP ON</li>
+      </ol>
+      <div className="grow" />
+      <SignalPad view={view} crew="engineer" focus={focus} />
+    </Frame>
+  )
+}
+
+========================================================================
+FILE: src/roles/Pilot.tsx
+========================================================================
+
+import type { ClientView } from '@shared/types'
+import { Demand } from '../components/Demand'
+import { Frame } from '../components/Frame'
+import { ShipBars } from '../components/ShipBars'
+import { SignalPad } from '../components/SignalPad'
+import { StormScope } from '../components/StormScope'
+
+export function Pilot({ view }: { view: ClientView }) {
+  const eta = view.stormEta
+  const hit = !!view.stormActive
+  const last = view.lastSignal
+  const called = last === 'shields-on' || last === 'shoot'
+  const pickNow = !hit && eta != null && !called
+  const late = hit && !called
+  const focus = pickNow || late ? (['shields-on', 'shoot'] as const) : undefined
+
+  return (
+    <Frame
+      who={view.you.name}
+      tag="navigation — only you see the rocks"
+      timeLeft={view.timeLeft}
+      chaos={view.chaos}
+    >
+      <ShipBars air={view.air ?? 0} airBand={view.airBand ?? 'ok'} power={view.power ?? 0} />
+      <Demand view={view} />
+      <div className="readout slim">
+        <div className="label">
+          rocks
+          {view.rockWave
+            ? ` · cluster ${view.rockWave}/${view.rockWaves ?? 3}`
+            : ''}
+        </div>
+        <div className={`value compact ${hit || (eta != null && eta <= 8) ? 'v-danger' : 'v-storm'}`}>
+          {hit ? 'HIT' : eta == null ? '—' : `${Math.ceil(eta)}`}
+          {eta != null && !hit ? <span className="unit">s</span> : null}
+        </div>
+        <div className="scope-slim">
+          <StormScope eta={eta} active={hit} lead={24} />
+        </div>
+        <div className="sub">
+          {hit
+            ? called
+              ? 'it hit. send again if they missed'
+              : 'SHIELDS or SHOOT — pick one'
+            : eta == null
+              ? 'three clusters. each one needs a new picture'
+              : called
+                ? 'call went. next cluster needs a new one'
+                : 'SHIELDS or SHOOT — pick one'}
+        </div>
+      </div>
+      <ol className="recipe">
+        <li className={pickNow || late ? 'now' : called && last === 'shields-on' ? 'done' : ''}>
+          SHIELDS — cover, costs power
+        </li>
+        <li className={pickNow || late ? 'now' : called && last === 'shoot' ? 'done' : ''}>
+          or SHOOT — break rocks, no power
+        </li>
+      </ol>
+      <div className="grow" />
+      <SignalPad view={view} crew="pilot" focus={focus} />
+    </Frame>
+  )
+}
+
+========================================================================
+FILE: src/roles/Sparks.tsx
+========================================================================
+
+import { useEffect, useRef } from 'react'
+import type { ClientView, SignalId } from '@shared/types'
+import { Demand } from '../components/Demand'
+import { Frame } from '../components/Frame'
+import { ShipBars } from '../components/ShipBars'
+import { SignalPad } from '../components/SignalPad'
+
+export function Sparks({ view }: { view: ClientView }) {
+  const end = useRef<HTMLDivElement>(null)
+  const lines = view.alarms.slice(-4)
+  const yell = view.order?.text ?? ''
+  const port = /PORT/.test(yell) || view.alarms.some((l) => /PORT VALVE/.test(l))
+  const stbd = /STARBOARD/.test(yell) || view.alarms.some((l) => /STARBOARD VALVE/.test(l))
+  const focus: SignalId | undefined = /PORT/.test(yell)
+    ? 'seal-port'
+    : /STARBOARD/.test(yell)
+      ? 'seal-starboard'
+      : undefined
+
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: 'end' })
+  }, [lines.length])
+
+  return (
+    <Frame
+      who={view.you.name}
+      tag="communications — only you see what broke"
+      timeLeft={view.timeLeft}
+      chaos={view.chaos}
+    >
+      <ShipBars air={view.air ?? 0} airBand={view.airBand ?? 'ok'} power={view.power ?? 0} />
+      <Demand view={view} />
+      <div className="readout slim log-box">
+        <div className="label">alarm log</div>
+        <div className="log">
+          {lines.map((line, i) => (
+            <div
+              key={`${line}-${i}`}
+              className={i === lines.length - 1 ? 'fresh' : ''}
+            >
+              {line}
+            </div>
+          ))}
+          <div ref={end} />
+        </div>
+      </div>
+      <ol className="recipe">
+        <li className={port && focus === 'seal-port' ? 'now' : ''}>port = left — SEAL PORT</li>
+        <li className={stbd && focus === 'seal-starboard' ? 'now' : ''}>stbd = right — SEAL STBD</li>
+      </ol>
+      <div className="grow" />
+      <SignalPad view={view} crew="sparks" focus={focus} />
+    </Frame>
+  )
+}
+
+========================================================================
+FILE: src/roles/Board.tsx
+========================================================================
+
+import type { ClientView } from '@shared/types'
+import { AirGauge } from '../components/AirGauge'
+import { Frame } from '../components/Frame'
+import { PowerCells } from '../components/PowerCells'
+import { StormScope } from '../components/StormScope'
+
+/** Spectator view for a laptop on the table. Point the camera at this. */
+export function Board({ view }: { view: ClientView }) {
+  const s = view.spectator
+  if (!s) return null
+  const band = s.air > 92 ? 'over' : s.air < 18 ? 'critical' : s.air < 40 ? 'low' : 'ok'
+
+  return (
+    <div className="board">
+      <Frame who="HAB-7" tag="spectator — everything at once" timeLeft={view.timeLeft} chaos={view.chaos}>
+        <div className="strip">
+          <div className="readout">
+            <div className="label">air</div>
+            <AirGauge air={s.air} band={band} />
+            <div className={`value ${band === 'ok' ? 'v-air' : 'v-danger'}`}>{s.air}</div>
+          </div>
+          <div className="readout">
+            <div className="label">power</div>
+            <div className="value v-power">{s.power}</div>
+            <PowerCells power={s.power} />
+          </div>
+          <div className="readout">
+            <div className="label">dust front</div>
+            <div className="value v-storm">
+              {view.stormActive ? 'HIT' : s.stormEta == null ? '—' : Math.ceil(s.stormEta)}
+            </div>
+            <StormScope eta={s.stormEta} active={!!view.stormActive} lead={24} />
+          </div>
+        </div>
+        <div className="strip">
+          <div className="readout">
+            <div className="label">pump</div>
+            <div className={`value ${s.pumpOn ? 'v-ok' : 'v-danger'}`} style={{ fontSize: 30 }}>
+              {s.pumpOn ? 'ON' : 'OFF'}
+            </div>
+          </div>
+          <div className="readout">
+            <div className="label">shields</div>
+            <div className={`value ${s.shieldsOn ? 'v-ok' : 'v-danger'}`} style={{ fontSize: 30 }}>
+              {s.shieldsOn ? 'UP' : 'DOWN'}
+            </div>
+          </div>
+          <div className="readout">
+            <div className="label">port valve</div>
+            <div className="value" style={{ fontSize: 30 }}>
+              {s.valves.port === 'sealed' ? 'SEALED' : 'OPEN'}
+            </div>
+          </div>
+          <div className="readout">
+            <div className="label">stbd valve</div>
+            <div className="value" style={{ fontSize: 30 }}>
+              {s.valves.starboard === 'sealed' ? 'SEALED' : 'OPEN'}
+            </div>
+          </div>
+        </div>
+        <div className="log">
+          {s.alarms.map((line, i) => (
+            <div key={`${line}-${i}`} className={i === s.alarms.length - 1 ? 'fresh' : ''}>
+              {line}
+            </div>
+          ))}
+        </div>
+      </Frame>
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/screens/Home.tsx
+========================================================================
+
+import { useState } from 'react'
+import { sanitizeName } from '@shared/content'
+import type { ClientView } from '@shared/types'
+import { createHab, joinHab } from '../net'
+
+function load(key: string) {
+  try {
+    return sessionStorage.getItem(key) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function save(key: string, value: string) {
+  try {
+    sessionStorage.setItem(key, value)
+  } catch {
+    /* private mode */
+  }
+}
+
+export function Home(props: {
+  error: string | null
+  onReady: () => void
+  onTutorial: () => void
+  onView: (view: ClientView) => void
+  onError: (msg: string) => void
+}) {
+  const [name, setName] = useState(() => load('crosstalk.name'))
+  const [code, setCode] = useState(() => load('crosstalk.code'))
+  const [busy, setBusy] = useState(false)
+  const username = sanitizeName(name)
+  const canGo = !!username && !busy
+
+  async function go(kind: 'create' | 'join') {
+    if (!username) {
+      props.onError('Pick a username first')
+      return
+    }
+    save('crosstalk.name', username)
+    if (kind === 'join') save('crosstalk.code', code)
+    props.onReady()
+    setBusy(true)
+    try {
+      const res = kind === 'create' ? await createHab(username) : await joinHab(code, username)
+      props.onView(res.view)
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : 'Could not reach the hab')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      className="app stage"
+      style={{ '--plate': 'url(/art/hero-hab.webp)' } as React.CSSProperties}
+    >
+      <div className="hero">
+        <div className="tag">four phones · one dust storm · 90 seconds</div>
+        <h1>CROSSTALK</h1>
+        <p className="pitch">
+          Four phones. Four opposite alerts. <em>Power will tell oxygen to kill the pump. Oxygen
+          will say the air looks fine. Power sends a high-priority ask anyway.</em>
+        </p>
+      </div>
+
+      <div className="card">
+        <div className="field">
+          <label htmlFor="name">username</label>
+          <input
+            id="name"
+            placeholder="Xiao"
+            value={name}
+            maxLength={16}
+            autoComplete="nickname"
+            autoFocus
+            onChange={(e) => {
+              const next = e.target.value
+              setName(next)
+              save('crosstalk.name', next)
+            }}
+          />
+        </div>
+        {!username ? (
+          <div className="tag">type a name — this is who they see on your asks</div>
+        ) : null}
+        <button className="btn primary" disabled={!canGo} onClick={() => void go('create')}>
+          open a hab
+        </button>
+        <button className="btn" type="button" onClick={props.onTutorial}>
+          60-second briefing
+        </button>
+      </div>
+
+      <div className="card">
+        <div className="field">
+          <label htmlFor="code">join your crew</label>
+          <input
+            id="code"
+            placeholder="ABCD"
+            value={code}
+            maxLength={4}
+            autoCapitalize="characters"
+            onChange={(e) => {
+              const next = e.target.value.toUpperCase()
+              setCode(next)
+              save('crosstalk.code', next)
+            }}
+          />
+        </div>
+        <button
+          className="btn"
+          disabled={!canGo || code.length < 4}
+          onClick={() => void go('join')}
+        >
+          climb aboard
+        </button>
+      </div>
+
+      {props.error ? <div className="notice">{props.error}</div> : null}
+
+      <div className="how">
+        <div className="tag">how it plays</div>
+        <ol>
+          <li>Oxygen has every switch. Each one has an oxygen %. Cabin air is those added up.</li>
+          <li>Power, navigation and communications each see one fact. They talk, then send a picture.</li>
+          <li>
+            Each picture lands with your username, the switch, and how urgent. Oxygen flips the
+            switch. That is the reply.
+          </li>
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/screens/Lobby.tsx
+========================================================================
+
+import { useEffect, useState } from 'react'
+import { CREW_JOB, CREW_META, STATION_META, VEGA_META, sanitizeName, seatedName } from '@shared/content'
+import { setUrgency, unlockAudio } from '../audio'
+import { CREW_IDS } from '@shared/types'
+import type { ClientView, StationId } from '@shared/types'
+import { claim, renamePlayer, setReady, startGame } from '../net'
+
+const ART: Record<string, string> = {
+  vega: '/art/crew-vega.webp',
+  engineer: '/art/crew-rook.webp',
+  pilot: '/art/crew-idris.webp',
+  sparks: '/art/crew-chen.webp',
+}
+
+function occupant(view: ClientView, role: StationId) {
+  return view.players.find((p) => p.connected && p.role === role) ?? null
+}
+
+export function Lobby(props: {
+  view: ClientView
+  error: string | null
+  onError: (msg: string) => void
+}) {
+  const { view } = props
+  const taken = new Set(view.players.filter((p) => p.connected).map((p) => p.role))
+  const mine = view.you.role
+  const live = view.players.filter((p) => p.connected && p.role && p.role !== 'board')
+  const waiting = live.filter((p) => !p.ready)
+  const empty = !taken.has('vega') || CREW_IDS.some((id) => !taken.has(id))
+  const [draft, setDraft] = useState<string | null>(null)
+  const name = draft ?? view.you.name
+
+  useEffect(() => {
+    unlockAudio()
+    setUrgency({ rumble: 0.14, pulse: 0.18, alarm: 0, storm: 0, clock: false })
+    return () => setUrgency(null)
+  }, [])
+
+  async function pick(role: StationId | null) {
+    try {
+      await claim(role)
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : 'seat taken')
+    }
+  }
+
+  async function commitName() {
+    const next = sanitizeName(name)
+    if (!next) {
+      setDraft(null)
+      props.onError('Pick a username')
+      return
+    }
+    setDraft(null)
+    if (next === view.you.name) return
+    try {
+      await renamePlayer(next)
+      sessionStorage.setItem('crosstalk.name', next)
+    } catch (err) {
+      props.onError(err instanceof Error ? err.message : 'could not rename')
+    }
+  }
+
+  return (
+    <div className="app">
+      <div className="topbar">
+        <div>
+          <div className="tag">hab code — read it out loud{view.round > 1 ? ` · round ${view.round}` : ''}</div>
+          <div className="who">CROSSTALK</div>
+        </div>
+      </div>
+      <div className="code">{view.code}</div>
+
+      <div className="card">
+        <div className="field">
+          <label htmlFor="rename">your username</label>
+          <input
+            id="rename"
+            value={name}
+            maxLength={16}
+            autoComplete="nickname"
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={() => void commitName()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur()
+              }
+            }}
+          />
+        </div>
+        <div className="tag">this is the name on every ask you send</div>
+      </div>
+
+      {empty ? (
+        <div className="tag" style={{ textAlign: 'center', lineHeight: 1.6 }}>
+          empty seats get a slow stand-in. four humans is the real game.
+        </div>
+      ) : null}
+
+      <div className="roster">
+        {view.players.map((p) => (
+          <div className="row" key={p.id}>
+            <span>
+              <b>{p.name}</b>
+              {p.host ? ' · lead' : ''}
+              {!p.connected ? ' · dropped' : ''}
+            </span>
+            <span>
+              {p.role ? STATION_META[p.role].title : 'no seat'}
+              {p.ready ? ' ✓' : ''}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      <div className="seats">
+        <button
+          className={`seat vega${mine === 'vega' ? ' mine' : ''}${taken.has('vega') && mine !== 'vega' ? ' taken' : ''}`}
+          disabled={taken.has('vega') && mine !== 'vega'}
+          onClick={() => void pick(mine === 'vega' ? null : 'vega')}
+        >
+          <img className="badge" src={ART.vega} alt="" style={{ objectFit: 'cover' }} />
+          <span className="name">
+            {occupant(view, 'vega')
+              ? `${occupant(view, 'vega')!.name} — oxygen`
+              : 'oxygen'}
+          </span>
+          <span className="desc">
+            {occupant(view, 'vega') && mine !== 'vega'
+              ? `taken by ${occupant(view, 'vega')!.name}`
+              : 'Every control. The only air gauge. Their pictures will tell you to kill the pump. Your number will say no.'}
+          </span>
+        </button>
+
+        {CREW_IDS.map((id) => {
+          const meta = CREW_META[id]
+          const isMine = mine === id
+          const blocked = taken.has(id) && !isMine
+          const who = occupant(view, id)
+          return (
+            <button
+              key={id}
+              className={`seat ${id}${isMine ? ' mine' : ''}${blocked ? ' taken' : ''}`}
+              disabled={blocked}
+              onClick={() => void pick(isMine ? null : id)}
+            >
+              <img className="badge" src={ART[id]} alt="" style={{ objectFit: 'cover' }} />
+              <span className="name">
+                {who ? `${who.name} — ${meta.title}` : meta.title}
+              </span>
+              <span className="desc">{who && !isMine ? `taken by ${who.name}` : meta.blurb}</span>
+            </button>
+          )
+        })}
+
+        <button
+          className={`seat board${mine === 'board' ? ' mine' : ''}`}
+          onClick={() => void pick(mine === 'board' ? null : 'board')}
+        >
+          <span className="badge">▦</span>
+          <span className="name">
+            {occupant(view, 'board')
+              ? `${occupant(view, 'board')!.name} — hab monitor`
+              : 'hab monitor'}
+          </span>
+          <span className="desc">
+            Spectator screen for filming. Players: do not look at this. It has every number.
+          </span>
+        </button>
+      </div>
+
+      {mine === 'vega' ? (
+        <div className="brief">
+          {VEGA_META.blurb}
+          <div className="honor">{VEGA_META.honor}</div>
+        </div>
+      ) : mine && mine !== 'board' ? (
+        <div className="brief">
+          Your alert will contradict theirs. Ask what they see, then send{' '}
+          {seatedName(view.players, 'vega', 'oxygen')} a message — your name, what to flip, how
+          urgent. All three of you share one cooldown, so a selfish press costs everyone.
+          <div className="honor">{CREW_JOB[mine]}</div>
+        </div>
+      ) : null}
+
+      {mine ? (
+        <button
+          className={`btn ${view.you.ready ? 'ghost' : 'primary'}`}
+          onClick={() => void setReady(!view.you.ready)}
+        >
+          {view.you.ready ? 'ready — tap to undo' : 'i am ready'}
+        </button>
+      ) : (
+        <div className="tag" style={{ textAlign: 'center' }}>take a seat</div>
+      )}
+
+      {view.you.host ? (
+        <button
+          className="btn primary"
+          disabled={waiting.length > 0}
+          onClick={() =>
+            void startGame().catch((e: unknown) =>
+              props.onError(e instanceof Error ? e.message : 'could not launch'),
+            )
+          }
+        >
+          {waiting.length
+            ? `waiting on ${waiting.map((p) => p.name).join(', ')}`
+            : 'launch the round'}
+        </button>
+      ) : (
+        <div className="tag" style={{ textAlign: 'center' }}>
+          {view.you.ready ? 'waiting on the hab lead' : 'ready up — then the lead launches'}
+        </div>
+      )}
+
+      {props.error ? <div className="notice">{props.error}</div> : null}
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/screens/Tutorial.tsx
+========================================================================
+
+import { useEffect, useState } from 'react'
+import type { ClientAction, ClientView, StationId } from '@shared/types'
+import { unlockAudio } from '../audio'
+import { setActionSink } from '../net'
+import { useUrgency } from '../useUrgency'
+import { Engineer } from '../roles/Engineer'
+import { Pilot } from '../roles/Pilot'
+import { Sparks } from '../roles/Sparks'
+import { Vega } from '../roles/Vega'
+
+type Gate = 'next' | 'pump' | 'pump-off' | 'storm' | 'seal-port'
+
+interface Step {
+  title: string
+  coach: string
+  role: StationId | null
+  view?: ClientView
+  gate: Gate
+}
+
+const CREW = {
+  oxygen: { id: 'mina', name: 'Mina', role: 'vega' as const },
+  power: { id: 'alex', name: 'Alex', role: 'engineer' as const },
+  nav: { id: 'sam', name: 'Sam', role: 'pilot' as const },
+  comms: { id: 'jules', name: 'Jules', role: 'sparks' as const },
+}
+
+function crewPlayers() {
+  return [
+    { ...CREW.oxygen, ready: true, connected: true, host: true },
+    { ...CREW.power, ready: true, connected: true, host: false },
+    { ...CREW.nav, ready: true, connected: true, host: false },
+    { ...CREW.comms, ready: true, connected: true, host: false },
+  ]
+}
+
+function seat(
+  role: StationId,
+  name: string,
+  patch: Partial<ClientView>,
+  chaos = 0.15,
+): ClientView {
+  return {
+    code: 'TUTR',
+    phase: 'play',
+    you: { id: 'you', name, role, host: true, ready: true },
+    players: crewPlayers(),
+    timeLeft: 90,
+    air: 88,
+    airBand: 'ok',
+    valves: null,
+    leakLights: null,
+    pumpOn: null,
+    shieldsOn: null,
+    shot: null,
+    airParts: null,
+    signals: [],
+    aim: null,
+    power: 70,
+    draw: null,
+    stormEta: null,
+    stormActive: null,
+    rockWave: null,
+    rockWaves: null,
+    alarms: [],
+    signalCooldownMs: 0,
+    lastSignal: null,
+    ackAgeMs: null,
+    order: null,
+    gripe: null,
+    chaos,
+    outcome: null,
+    loseReason: null,
+    countdown: null,
+    round: 1,
+    recap: null,
+    spectator: null,
+    ...patch,
+  }
+}
+
+const STEPS: Step[] = [
+  {
+    title: 'the table',
+    coach:
+      'Four phones. Four opposite alerts. You cannot see anyone else\'s number. You have to ask — then send oxygen a picture with your username on it, because shouting is not the channel that counts.',
+    role: null,
+    gate: 'next',
+  },
+  {
+    title: 'you are Mina — oxygen',
+    coach:
+      'Every control is yours. Each one has an oxygen number. Cabin air is those numbers added up. Shout the total. Right now nobody has sent a picture, so you are guessing.',
+    role: 'vega',
+    view: seat('vega', 'Mina', {
+      air: 88,
+      airBand: 'ok',
+      airParts: { pump: 42, port: 16, starboard: 16, shields: 0, guns: 0, cabin: 14 },
+      valves: { port: 'open', starboard: 'open' },
+      pumpOn: true,
+      shieldsOn: false,
+      shot: false,
+      timeLeft: null,
+    }),
+    gate: 'next',
+  },
+  {
+    title: 'Alex asks you to flip a switch',
+    coach:
+      'Alex sent a high-priority message: turn the air pump off. Your air still looks fine. That is the fight. Flip the lit pump — that is the whole reply. There is no got-it button.',
+    role: 'vega',
+    view: seat(
+      'vega',
+      'Mina',
+      {
+        air: 88,
+        airBand: 'ok',
+        airParts: { pump: 42, port: 16, starboard: 16, shields: 0, guns: 0, cabin: 14 },
+        valves: { port: 'open', starboard: 'open' },
+        pumpOn: true,
+        shieldsOn: false,
+        shot: false,
+        timeLeft: null,
+        signals: [
+          {
+            id: 'tut-1',
+            signal: 'pump-off',
+            from: 'engineer',
+            fromName: 'Alex',
+            at: 0,
+            fresh: true,
+            priority: 'high',
+          },
+        ],
+        aim: 'pump-off',
+        order: null,
+      },
+      0.35,
+    ),
+    gate: 'pump',
+  },
+  {
+    title: 'you are Alex — power',
+    coach:
+      'Only you see the reactor. The voltage is dumping. Your alert says kill the pump. Mina will hate you. Send the picture anyway — tap PUMP OFF.',
+    role: 'engineer',
+    view: seat(
+      'engineer',
+      'Alex',
+      {
+        power: 14,
+        draw: 2.2,
+        timeLeft: 71,
+        order: { text: 'POWER 14% — TURN OFF THE PUMP. TEN SECONDS.', tone: 'fight' },
+      },
+      0.45,
+    ),
+    gate: 'pump-off',
+  },
+  {
+    title: 'you are Sam — navigation',
+    coach:
+      'Only you see the rocks coming. Three clusters. Each one needs a new picture: SHIELDS to cover, or SHOOT to break them. Either is enough. Power will hate shields. Tap one.',
+    role: 'pilot',
+    view: seat(
+      'pilot',
+      'Sam',
+      {
+        stormEta: 16,
+        stormActive: false,
+        rockWave: 1,
+        rockWaves: 3,
+        timeLeft: 58,
+        order: { text: '16 — SHIELDS OR SHOOT. PICK ONE.', tone: 'fight' },
+      },
+      0.55,
+    ),
+    gate: 'storm',
+  },
+  {
+    title: 'you are Jules — communications',
+    coach:
+      'Only you see which valve is bleeding. Sealing it starves the pump. They will shout. Tap SEAL PORT.',
+    role: 'sparks',
+    view: seat(
+      'sparks',
+      'Jules',
+      {
+        alarms: ['HAB-7 IN THE DUST CORRIDOR', 'PORT VALVE LEAKING'],
+        timeLeft: 44,
+        order: { text: 'PORT IS BLEEDING. SEAL IT. DO NOT WAIT.', tone: 'fight' },
+      },
+      0.7,
+    ),
+    gate: 'seal-port',
+  },
+  {
+    title: 'then it stacks',
+    coach:
+      'The leak is still open when the pump runs away. The runaway is still going when the first rock cluster is called. Two more clusters come after. Late, the first valve opens again. Your alerts get louder and they still contradict. Swallow your own order for a few seconds or the air runs out.',
+    role: null,
+    gate: 'next',
+  },
+]
+
+export function Tutorial({ onDone }: { onDone: () => void }) {
+  const [i, setI] = useState(0)
+  const step = STEPS[i]!
+  const last = i >= STEPS.length - 1
+  useUrgency(step.view ?? null)
+
+  useEffect(() => {
+    setActionSink((action: ClientAction) => {
+      const s = STEPS[i]
+      if (!s) return
+      if (s.gate === 'pump' && action.type === 'pump' && action.on === false) setI((n) => n + 1)
+      if (s.gate === 'pump-off' && action.type === 'signal' && action.signal === 'pump-off') {
+        setI((n) => n + 1)
+      }
+      if (
+        s.gate === 'storm' &&
+        action.type === 'signal' &&
+        (action.signal === 'shields-on' || action.signal === 'shoot')
+      ) {
+        setI((n) => n + 1)
+      }
+      if (s.gate === 'seal-port' && action.type === 'signal' && action.signal === 'seal-port') {
+        setI((n) => n + 1)
+      }
+    })
+    return () => setActionSink(null)
+  }, [i])
+
+  function next() {
+    if (last) onDone()
+    else setI((n) => n + 1)
+  }
+
+  return (
+    <div className="tut-shell" onPointerDown={unlockAudio}>
+      <div className="coach">
+        <div className="step">
+          briefing {i + 1} / {STEPS.length} — {step.title}
+        </div>
+        {step.coach}
+      </div>
+      {step.role === 'vega' && step.view ? <Vega view={step.view} /> : null}
+      {step.role === 'engineer' && step.view ? <Engineer view={step.view} /> : null}
+      {step.role === 'pilot' && step.view ? <Pilot view={step.view} /> : null}
+      {step.role === 'sparks' && step.view ? <Sparks view={step.view} /> : null}
+      {step.gate === 'next' ? (
+        <button className="btn primary" onClick={next}>
+          {last ? 'I have a table. Open a hab.' : 'next'}
+        </button>
+      ) : (
+        <div className="tag" style={{ textAlign: 'center' }}>
+          do the thing on the console — the briefing will move
+        </div>
+      )}
+      <button className="btn ghost" onClick={onDone}>
+        skip
+      </button>
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/screens/Countdown.tsx
+========================================================================
+
+import { useEffect, useRef } from 'react'
+import { STATION_META } from '@shared/content'
+import type { ClientView } from '@shared/types'
+import { playFx, setUrgency, unlockAudio } from '../audio'
+
+export function Countdown({ view }: { view: ClientView }) {
+  const n = view.countdown ?? 0
+  const last = useRef<number | null>(null)
+  const job = view.you.role ? STATION_META[view.you.role].title : 'stand by'
+  const seat = `${view.you.name} · ${job}`
+
+  useEffect(() => {
+    unlockAudio()
+    setUrgency({ rumble: 0.3, pulse: 0.55, alarm: 0.15, storm: 0, clock: false })
+    return () => setUrgency(null)
+  }, [])
+
+  useEffect(() => {
+    if (last.current !== n) {
+      last.current = n
+      playFx(n <= 1 ? 'impact' : 'tick')
+    }
+  }, [n])
+
+  return (
+    <div className="app stage count-shell" onPointerDown={unlockAudio}>
+      <div className="tag">{seat}</div>
+      <div className="count-num">{n < 1 ? 'GO' : n}</div>
+      <p className="pitch">
+        Talk to each other. Then send a picture. Empty seats get a slow stand-in.
+      </p>
+    </div>
+  )
+}
+
+========================================================================
+FILE: src/screens/Play.tsx
+========================================================================
+
+import type { ClientView } from '@shared/types'
+import { Board } from '../roles/Board'
+import { Engineer } from '../roles/Engineer'
+import { Pilot } from '../roles/Pilot'
+import { Sparks } from '../roles/Sparks'
+import { Vega } from '../roles/Vega'
+import { useUrgency } from '../useUrgency'
+
+export function Play({ view }: { view: ClientView }) {
+  useUrgency(view)
+  switch (view.you.role) {
+    case 'vega':
+      return <Vega view={view} />
+    case 'engineer':
+      return <Engineer view={view} />
+    case 'pilot':
+      return <Pilot view={view} />
+    case 'sparks':
+      return <Sparks view={view} />
+    case 'board':
+      return <Board view={view} />
+    default:
+      return (
+        <div className="app">
+          <div className="notice">No seat. Reload and pick one.</div>
+        </div>
+      )
+  }
+}
+
+========================================================================
+FILE: src/screens/Debrief.tsx
+========================================================================
+
+import { useEffect, useState } from 'react'
+import { seatedName, signalLabel } from '@shared/content'
+import type { ClientView } from '@shared/types'
+import { playFx, setUrgency } from '../audio'
+import { replayHab } from '../net'
+
+export function Debrief({
+  view,
+  error,
+  onError,
+}: {
+  view: ClientView
+  error: string | null
+  onError: (msg: string) => void
+}) {
+  const won = view.outcome === 'won'
+  const recap = view.recap
+  const oxygen = seatedName(view.players, 'vega', 'oxygen')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    setUrgency(null)
+    playFx(won ? 'win' : 'lose')
+  }, [won])
+
+  async function again() {
+    if (!view.you.host) return
+    setBusy(true)
+    try {
+      await replayHab()
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'could not reset the hab')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div
+      className="app stage"
+      style={{ '--plate': 'url(/art/hero-hab.webp)' } as React.CSSProperties}
+    >
+      <div className="verdict">
+        <div className="tag">
+          round {recap?.round ?? view.round} · {won ? 'far side of the corridor' : 'hab-7 went quiet'}
+        </div>
+        <div className={`head ${won ? 'v-ok' : 'v-danger'}`}>
+          {won ? 'STILL BREATHING' : 'NOBODY MADE IT'}
+        </div>
+        <div className="why">{recap?.note ?? view.loseReason}</div>
+      </div>
+
+      {recap ? (
+        <div className="recap">
+          <div className="recap-grid">
+            <div>
+              <div className="tag">lasted</div>
+              <b>{recap.survived}s</b>
+            </div>
+            <div>
+              <div className="tag">air floor</div>
+              <b>{recap.airFloor}%</b>
+            </div>
+            <div>
+              <div className="tag">air left</div>
+              <b>{recap.airEnd}%</b>
+            </div>
+          </div>
+          {recap.calls.length ? (
+            <ol className="recap-calls">
+              {recap.calls.map((c, i) => (
+                <li key={`${c.signal}-${i}`} className={c.acked ? 'acked' : ''}>
+                  {c.from} sent {signalLabel(c.signal)}
+                  {c.acked ? ` — ${oxygen} flipped it` : ' — never flipped'}
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <div className="tag">nobody sent a picture</div>
+          )}
+          {recap.misses.length ? (
+            <ul className="recap-miss">
+              {recap.misses.map((m) => (
+                <li key={m}>{m}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!won ? (
+        <div className="brief">
+          Swap seats. The person who just played oxygen should take a clock or a log — they already
+          know what it feels like to be guessed at.
+        </div>
+      ) : (
+        <div className="brief">Do it again with oxygen in a different chair.</div>
+      )}
+
+      <div className="grow" />
+      {view.you.host ? (
+        <button className="btn primary" disabled={busy} onClick={() => void again()}>
+          same hab — run it again
+        </button>
+      ) : (
+        <div className="tag" style={{ textAlign: 'center' }}>
+          waiting on the hab lead to run it again
+        </div>
+      )}
+      {error ? <div className="notice">{error}</div> : null}
+    </div>
+  )
+}
+
+========================================================================
+FILE: scripts/asymmetry.ts
+========================================================================
+
+/**
+ * Guards the one rule the whole game rests on: Vega cannot perceive what her
+ * crew perceive, and the server is what enforces it rather than the players'
+ * good manners.
+ *
+ *   npm run asymmetry
+ *
+ * This is separate from the balance harness because balance is a tuning question
+ * and this is a correctness one. If a field leaks into her view, the game stops
+ * being about relaying and starts being solitaire.
+ */
+import { SIGNAL_OWNER } from '../shared/content.ts'
+import { CREW_IDS, ROLE_IDS, hearsSpeech } from '../shared/types.ts'
+import { Hab } from '../server/game.ts'
+import type { ClientView, SignalId, StationId } from '../shared/types.ts'
+
+function seat(hab: Hab, role: StationId, id = role) {
+  hab.addPlayer({
+    id,
+    name: id,
+    role: null,
+    ready: false,
+    connected: true,
+    host: false,
+    socketId: `sock-${id}`,
+  })
+  hab.claim(id, role)
+  hab.setReady(id, true)
+}
+
+const hab = new Hab(
+  'TEST',
+  { id: 'vega', name: 'Vega', role: null, ready: false, connected: true, host: true, socketId: 's' },
+  7,
+)
+hab.claim('vega', 'vega')
+hab.setReady('vega', true)
+for (const c of CREW_IDS) seat(hab, c)
+seat(hab, 'board')
+
+const spoken: string[] = []
+hab.listener = { onView: () => {}, onSpeak: (p) => spoken.push(p.text) }
+const err = hab.start('vega', true)
+if (err) throw new Error(err)
+const inner = hab as unknown as {
+  tick: (dt: number) => void
+  leaks: Record<'port' | 'starboard', boolean>
+  valves: Record<'port' | 'starboard', 'open' | 'sealed'>
+  pumpOn: boolean
+  runawayUntil: number
+  elapsed: number
+  stormEta: number | null
+  stormActive: boolean
+  shieldsOn: boolean
+  rocksBroken: boolean
+}
+// Keep the table alive so we can inspect a live storm, not a corpse.
+for (let i = 0; i < 500; i++) {
+  inner.tick(0.1)
+  for (const v of ['port', 'starboard'] as const) {
+    if (inner.leaks[v] && inner.valves[v] !== 'sealed') {
+      hab.applyAction('vega', { type: 'valve', valve: v, sealed: true })
+    }
+  }
+  if (inner.elapsed < inner.runawayUntil && inner.pumpOn) {
+    hab.applyAction('vega', { type: 'pump', on: false })
+  } else if (inner.elapsed >= inner.runawayUntil && !inner.pumpOn && !inner.stormActive) {
+    hab.applyAction('vega', { type: 'pump', on: true })
+  }
+  if (inner.stormEta != null && !inner.stormActive && !inner.shieldsOn) {
+    hab.applyAction('vega', { type: 'shields', on: true })
+  }
+}
+hab.stopClock()
+
+const problems: string[] = []
+const view = (id: string) => hab.viewFor(id) as ClientView
+
+// --- who is allowed to hear the ship at all ---
+for (const role of ROLE_IDS) {
+  const should = role !== 'vega'
+  if (hearsSpeech(role) !== should) problems.push(`hearsSpeech(${role}) should be ${should}`)
+}
+if (hearsSpeech('board')) problems.push('the spectator board must not receive audio')
+if (hearsSpeech(null)) problems.push('an unseated player must not receive audio')
+if (!spoken.length) problems.push('the ship said nothing, so this run proves nothing')
+
+// --- what oxygen is allowed to know ---
+const v = view('vega')
+const hiddenFromVega: [string, unknown][] = [
+  ['timeLeft', v.timeLeft],
+  ['leakLights', v.leakLights],
+  ['stormEta', v.stormEta],
+  ['stormActive', v.stormActive],
+  ['rockWave', v.rockWave],
+  ['draw', v.draw],
+  ['signalCooldownMs', v.signalCooldownMs],
+  ['lastSignal', v.lastSignal],
+  ['ackAgeMs', v.ackAgeMs],
+]
+for (const [field, value] of hiddenFromVega) {
+  if (value !== null) problems.push(`oxygen can see ${field} (${JSON.stringify(value)})`)
+}
+if (v.alarms.length) problems.push('oxygen can read the alarm log')
+if (v.air == null) problems.push('oxygen cannot see cabin air')
+if (v.power == null) problems.push('oxygen cannot see reactor power')
+if (v.airParts == null) problems.push('oxygen cannot see the mix on each switch')
+if (v.order && /port|starboard|storm|t-\d|power \d/i.test(v.order.text)) {
+  problems.push(`oxygen's order leaked someone else's fact: "${v.order.text}"`)
+}
+
+// Shared bars, unique facts. Air and power are the argument. Voltage, rocks,
+// and the alarm log stay welded to one console.
+const rook = view('engineer')
+if (rook.power == null) problems.push('power cannot see the reactor')
+if (rook.air == null) problems.push('power cannot see cabin air')
+if (rook.draw == null) problems.push('power cannot see voltage, which is how they spot a runaway')
+if (rook.stormEta !== null) problems.push('power can see the storm, which is navigation only')
+if (rook.stormActive !== null) problems.push('power can see that the front landed')
+if (rook.rockWave !== null) problems.push('power can see which rock cluster this is')
+if (rook.alarms.length) problems.push('power can read the log, which is communications only')
+if (rook.shot !== null) problems.push('power can see whether the guns fired')
+if (rook.airParts !== null) problems.push('power can see the oxygen mix on each switch')
+
+const idris = view('pilot')
+if (idris.stormEta == null && idris.stormActive !== true) {
+  problems.push('navigation cannot see the storm')
+}
+if (idris.air == null) problems.push('navigation cannot see cabin air')
+if (idris.power == null) problems.push('navigation cannot see reactor power')
+if (idris.draw !== null) problems.push('navigation can see voltage, which is power only')
+if (idris.alarms.length) problems.push('navigation can read the log')
+if (idris.shot !== null) problems.push('navigation can see whether the guns fired')
+if (idris.airParts !== null) problems.push('navigation can see the oxygen mix on each switch')
+
+const chen = view('sparks')
+if (!chen.alarms.length) problems.push('communications cannot read the alarm log')
+if (chen.air == null) problems.push('communications cannot see cabin air')
+if (chen.power == null) problems.push('communications cannot see reactor power')
+if (chen.draw !== null) problems.push('communications can see voltage')
+if (chen.stormEta !== null) problems.push('communications can see the storm clock')
+if (chen.stormActive !== null) problems.push('communications can see that the front landed')
+if (chen.rockWave !== null) problems.push('communications can see which rock cluster this is')
+if (chen.shot !== null) problems.push('communications can see whether the guns fired')
+if (chen.airParts !== null) problems.push('communications can see the oxygen mix on each switch')
+if (chen.alarms.some((line) => /FRONT|RUNAWAY|SIGNAL|ACK|INBOUND|IMPACT|BRACE/i.test(line))) {
+  problems.push(`communications' log is saying someone else's job: ${chen.alarms.join(' / ')}`)
+}
+
+// The ship talking must never carry the answer. If it names the valve, the
+// pump, the shields or the countdown, the table can stop talking.
+const spoiled = spoken.filter((line) =>
+  /port|starboard|pump|shield|shoot|brace|valve|runaway|overpressure|t-\d/i.test(line),
+)
+for (const line of spoiled) problems.push(`ship said the answer out loud: "${line}"`)
+
+// --- signals are welded to one console ---
+// Fresh hab: the long run may already have ended now that emergencies stack.
+{
+  const pad = new Hab(
+    'PAD',
+    { id: 'vega', name: 'Vega', role: null, ready: false, connected: true, host: true, socketId: 's' },
+    3,
+  )
+  pad.claim('vega', 'vega')
+  pad.setReady('vega', true)
+  for (const c of CREW_IDS) seat(pad, c)
+  pad.listener = { onView: () => {}, onSpeak: () => {} }
+  pad.start('vega', true)
+  ;(pad as unknown as { tick: (dt: number) => void }).tick(0.2)
+  pad.stopClock()
+  const look = (id: string) => pad.viewFor(id) as ClientView
+
+  if (!pad.applyAction('vega', { type: 'signal', signal: 'shoot' })) {
+    problems.push('Vega was allowed to signal herself')
+  }
+
+  const sent = pad.applyAction('sparks', { type: 'signal', signal: 'seal-port' })
+  if (sent) problems.push(`Chen could not send her own call: ${sent}`)
+  else {
+    if (look('engineer').lastSignal !== null) problems.push('Rook can see the call Chen just sent')
+    if (look('pilot').lastSignal !== null) problems.push('Idris can see the call Chen just sent')
+    if (look('sparks').lastSignal !== 'seal-port') {
+      problems.push('Chen cannot see the call she just sent')
+    }
+  }
+
+  for (const [signal, owner] of Object.entries(SIGNAL_OWNER) as [SignalId, (typeof CREW_IDS)[number]][]) {
+    for (const other of CREW_IDS) {
+      if (other === owner) continue
+      const stolen = pad.applyAction(other, { type: 'signal', signal })
+      if (!stolen) problems.push(`${other} was allowed to send ${signal}`)
+    }
+  }
+}
+
+// Same second, opposite orders. If these two ever agree the fight is dead.
+{
+  const fight = new Hab(
+    'FIGHT',
+    { id: 'vega', name: 'Vega', role: null, ready: false, connected: true, host: true, socketId: 's' },
+    7,
+  )
+  fight.claim('vega', 'vega')
+  fight.setReady('vega', true)
+  for (const c of CREW_IDS) seat(fight, c)
+  fight.listener = { onView: () => {}, onSpeak: () => {} }
+  fight.start('vega', true)
+  const clock = fight as unknown as {
+    tick: (dt: number) => void
+    leaks: Record<'port' | 'starboard', boolean>
+    valves: Record<'port' | 'starboard', 'open' | 'sealed'>
+  }
+  for (let i = 0; i < 270; i++) {
+    clock.tick(0.1)
+    for (const v of ['port', 'starboard'] as const) {
+      if (clock.leaks[v] && clock.valves[v] !== 'sealed') {
+        fight.applyAction('vega', { type: 'valve', valve: v, sealed: true })
+      }
+    }
+  }
+  fight.stopClock()
+  const vegaYell = fight.viewFor('vega')?.order?.text ?? ''
+  const rookYell = fight.viewFor('engineer')?.order?.text ?? ''
+  if (/ABSOLUTELY NOT|THEY WANT THE PUMP|LOOKS FINE/i.test(vegaYell)) {
+    problems.push(`Vega is being told to argue instead of reading the inbox: "${vegaYell}"`)
+  }
+  if (!/TURN OFF THE PUMP|KILL THE PUMP/i.test(rookYell)) {
+    problems.push(`Rook was not told to kill the pump during the runaway: "${rookYell}"`)
+  }
+}
+
+if (problems.length) {
+  console.log('ASYMMETRY BROKEN:')
+  for (const p of problems) console.log('  -', p)
+  process.exit(1)
+}
+console.log(`ship spoke ${spoken.length} times, none of it to Vega`)
+console.log('asymmetry OK: shared bars, unique facts, speech never reaches oxygen')
+
+========================================================================
+FILE: scripts/playtest.ts
+========================================================================
+
+/**
+ * Drives the sim without sockets or a browser, so balance can be checked fast.
+ *   npx tsx scripts/playtest.ts
+ *
+ * Two things this has to prove:
+ *   1. A crew that runs the correct sequence survives.
+ *   2. Drop ANY ONE of the three and the round is unwinnable, because each
+ *      signal is welded to one console.
+ *
+ * Vega only ever acts on what her glass shows: the air number, and whatever
+ * signal arrived. She never reads which valve is leaking, because she cannot.
+ */
+import { MISSION_SECONDS, SIGNAL_OWNER } from '../shared/content.ts'
+import { VALVES } from '../shared/types.ts'
+import { Hab } from '../server/game.ts'
+import type { ClientAction, CrewId, SignalId, StationId } from '../shared/types.ts'
+
+type Internals = {
+  tick: (dt: number) => void
+  air: number
+  power: number
+  leaks: Record<'port' | 'starboard', boolean>
+  valves: Record<'port' | 'starboard', 'open' | 'sealed'>
+  pumpOn: boolean
+  shieldsOn: boolean
+  rocksBroken: boolean
+  stormEta: number | null
+  stormActive: boolean
+  runawayUntil: number
+  elapsed: number
+}
+
+function makeHab(seed: number) {
+  const hab = new Hab(
+    'TEST',
+    {
+      id: 'vega',
+      name: 'Vega',
+      role: null,
+      ready: false,
+      connected: true,
+      host: true,
+      socketId: 'sock-vega',
+    },
+    seed,
+  )
+  hab.claim('vega', 'vega')
+  hab.setReady('vega', true)
+  for (const role of ['engineer', 'pilot', 'sparks'] as StationId[]) {
+    hab.addPlayer({
+      id: role,
+      name: role,
+      role: null,
+      ready: false,
+      connected: true,
+      host: false,
+      socketId: `sock-${role}`,
+    })
+    hab.claim(role, role)
+    hab.setReady(role, true)
+  }
+  hab.listener = { onView: () => {}, onSpeak: () => {} }
+  const err = hab.start('vega', true)
+  if (err) throw new Error(`start failed: ${err}`)
+  hab.stopClock()
+  return { hab, inner: hab as unknown as Internals }
+}
+
+/**
+ * What the crew collectively want Vega to do, most urgent first. A list rather
+ * than one answer so that when a call is skipped the table falls through to the
+ * next thing worth saying, the way real players would.
+ */
+function desired(inner: Internals, _lead: number): SignalId[] {
+  const leaking = VALVES.filter((v) => inner.leaks[v] && inner.valves[v] !== 'sealed')
+  const runaway = inner.elapsed < inner.runawayUntil
+  const eta = inner.stormEta
+  const want: SignalId[] = []
+
+  if (runaway && inner.pumpOn) want.push('pump-off')
+  if (!inner.shieldsOn && !inner.rocksBroken && (eta != null || inner.stormActive)) {
+    want.push('shields-on')
+    want.push('shoot')
+  }
+  if (inner.stormActive && inner.pumpOn) want.push('pump-off')
+  if (leaking.length) want.push(leaking[0] === 'port' ? 'seal-port' : 'seal-starboard')
+  if (!inner.stormActive && !runaway && !inner.pumpOn && inner.air < 72) want.push('pump-on')
+  return want
+}
+
+interface Sim {
+  label: string
+  lag: number
+  vegaLag: number
+  /** Crew members who are absent or silent this run. */
+  missing: CrewId[]
+  /** Individual calls nobody makes, for testing whether one call is load-bearing. */
+  skip?: SignalId[]
+  /**
+   * Vega playing her own gauge instead of only obeying signals. She can see the
+   * air number and the overpressure hatching, so a sharp player really would do
+   * this. If she can carry the round alone the whole premise is dead.
+   */
+  vegaSolo?: boolean
+}
+
+/**
+ * What Vega can work out with no help at all: the air number, and nothing else.
+ * `obeyedPumpAt` keeps her from undoing an order she just followed — a real
+ * player trusts a signal for a few seconds before overriding it.
+ */
+function vegaSelfDrive(hab: Hab, inner: Internals, obeyedPumpAt: number | null) {
+  const air = inner.air
+  const trusting = obeyedPumpAt != null && inner.elapsed - obeyedPumpAt < 10
+  if (air > 96 && inner.pumpOn) hab.applyAction('vega', { type: 'pump', on: false })
+  else if (air < 58 && !inner.pumpOn && !trusting) hab.applyAction('vega', { type: 'pump', on: true })
+  // Air bleeding with the pump already running means a leak, but not which one.
+  // Guessing is all she has, so let her guess — and pay for a wrong guess.
+  if (air < 40) {
+    const open = VALVES.filter((v) => inner.valves[v] === 'open')
+    if (open.length > 1) hab.applyAction('vega', { type: 'valve', valve: open[0], sealed: true })
+  }
+}
+
+function run(sim: Sim, seed: number) {
+  const { hab, inner } = makeHab(seed)
+  const act = (who: string, a: ClientAction) => hab.applyAction(who, a)
+
+  let intent: SignalId | null = null
+  let noticedAt: number | null = null
+  let vegaTodo: SignalId | null = null
+  let vegaSawAt: number | null = null
+  let obeyedPumpAt: number | null = null
+  let minAir = 999
+  const steps = Math.ceil((MISSION_SECONDS + 1) / 0.1)
+
+  for (let i = 0; i < steps; i++) {
+    inner.tick(0.1)
+    if (hab.phase !== 'play') break
+    const t = inner.elapsed
+
+    const want =
+      desired(inner, 1.5 + sim.lag + sim.vegaLag).find(
+        (s) => !sim.missing.includes(SIGNAL_OWNER[s]) && !sim.skip?.includes(s),
+      ) ?? null
+    if (want && want !== intent) {
+      intent = want
+      noticedAt = t
+    }
+    if (intent && noticedAt != null && t - noticedAt >= sim.lag) {
+      const err = act(SIGNAL_OWNER[intent], { type: 'signal', signal: intent })
+      if (!err) intent = null
+    }
+
+    const view = hab.viewFor('vega')!
+    const fresh = view.signals.filter((s) => s.fresh).at(-1)
+    if (fresh && fresh.signal !== vegaTodo) {
+      vegaTodo = fresh.signal
+      vegaSawAt = t
+    }
+    if (vegaTodo && vegaSawAt != null && t - vegaSawAt >= sim.vegaLag) {
+      switch (vegaTodo) {
+        case 'pump-off':
+          act('vega', { type: 'pump', on: false })
+          obeyedPumpAt = t
+          break
+        case 'pump-on':
+          act('vega', { type: 'pump', on: true })
+          obeyedPumpAt = t
+          break
+        case 'seal-port':
+          act('vega', { type: 'valve', valve: 'port', sealed: true })
+          break
+        case 'seal-starboard':
+          act('vega', { type: 'valve', valve: 'starboard', sealed: true })
+          break
+        case 'shields-on':
+          act('vega', { type: 'shields', on: true })
+          break
+        case 'shoot':
+          act('vega', { type: 'shoot' })
+          break
+      }
+      vegaTodo = null
+    }
+
+    if (sim.vegaSolo) vegaSelfDrive(hab, inner, obeyedPumpAt)
+
+    minAir = Math.min(minAir, inner.air)
+  }
+
+  const view = hab.viewFor('vega')!
+  return {
+    outcome: view.outcome,
+    air: Math.round(inner.air),
+    minAir: Math.round(minAir),
+    reason: view.loseReason,
+  }
+}
+
+const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
+
+function report(sim: Sim) {
+  const results = SEEDS.map((s) => run(sim, s))
+  const won = results.filter((r) => r.outcome === 'won').length
+  const floor = Math.min(...results.map((r) => r.minAir))
+  console.log(
+    `${sim.label.padEnd(30)} won ${won}/${SEEDS.length}   air floor ${String(floor).padStart(3)}`,
+  )
+  return won
+}
+
+console.log('=== the one path ===')
+const sharp = report({ label: 'all three, sharp (1.2s)', lag: 1.2, vegaLag: 0.7, missing: [] })
+const normal = report({ label: 'all three, normal (2.2s)', lag: 2.2, vegaLag: 1.3, missing: [] })
+const slow = report({ label: 'all three, slow (3.6s)', lag: 3.6, vegaLag: 2.2, missing: [] })
+const sloppy = report({ label: 'all three, sloppy (5.0s)', lag: 5, vegaLag: 3, missing: [] })
+
+// The realistic good-table case: she obeys the pad AND works her own gauge.
+const helped = report({
+  label: 'all three + Vega on her gauge',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  vegaSolo: true,
+})
+
+console.log('\n=== every seat is load-bearing ===')
+const noRook = report({
+  label: 'Rook silent (no pump calls)',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['engineer'],
+})
+const noIdris = report({
+  label: 'Idris silent (no storm calls)',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['pilot'],
+})
+const noChen = report({
+  label: 'Chen silent (no valve calls)',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['sparks'],
+})
+const nobody = report({
+  label: 'nobody signals at all',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['engineer', 'pilot', 'sparks'],
+})
+const solo = report({
+  label: 'Vega alone, playing her gauge',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['engineer', 'pilot', 'sparks'],
+  vegaSolo: true,
+})
+console.log('\n=== storm is a choice, pump-off is not ===')
+const onlyShoot = report({
+  label: 'only SHOOT (no shields)',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['shields-on'],
+})
+const onlyShields = report({
+  label: 'only SHIELDS (no shoot)',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['shoot'],
+})
+const noStorm = report({
+  label: 'storm never answered',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['shields-on', 'shoot'],
+})
+const noPumpOff = report({
+  label: 'pump-off never called',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['pump-off'],
+})
+
+const problems: string[] = []
+if (sharp < SEEDS.length) problems.push('a sharp crew running the correct sequence must always win')
+if (normal < SEEDS.length - 1) problems.push('a normal crew should usually win')
+if (slow < SEEDS.length - 2) problems.push('a slow crew should still usually win')
+if (sloppy >= SEEDS.length) problems.push('a sloppy crew must sometimes lose — there has to be a ceiling')
+// Initiative must never be punished. If she does worse by thinking for herself,
+// the most engaged player at the table is the one breaking the round.
+if (helped < normal) problems.push('a Vega who works her own gauge must not do worse than one who only obeys')
+if (noRook > 0) problems.push('Rook is not load-bearing')
+if (noIdris > 0) problems.push('Idris is not load-bearing')
+if (noChen > 0) problems.push('Chen is not load-bearing')
+if (nobody > 0) problems.push('silence must never win')
+if (solo > 0) problems.push('a clever Vega must not be able to carry the round alone')
+if (onlyShoot < SEEDS.length - 1) problems.push('shooting the rocks must be enough without shields')
+if (onlyShields < SEEDS.length - 1) problems.push('shields must be enough without shooting')
+if (noStorm > 0) problems.push('the storm must be answered')
+if (noPumpOff > 0) problems.push('the pump-off call is decoration')
+
+if (problems.length) {
+  console.log('\nBALANCE NOT READY:')
+  for (const p of problems) console.log(`  - ${p}`)
+  process.exit(1)
+}
+console.log('\nbalance OK: one path, four seats on it, and not one spare call')

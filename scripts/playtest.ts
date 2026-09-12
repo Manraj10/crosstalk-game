@@ -1,0 +1,313 @@
+/**
+ * Drives the sim without sockets or a browser, so balance can be checked fast.
+ *   npx tsx scripts/playtest.ts
+ *
+ * Two things this has to prove:
+ *   1. A crew that runs the correct sequence survives.
+ *   2. Drop ANY ONE of the three and the round is unwinnable, because each
+ *      signal is welded to one console.
+ *
+ * Vega only ever acts on what her glass shows: the air number, and whatever
+ * signal arrived. She never reads which valve is leaking, because she cannot.
+ */
+import { MISSION_SECONDS, SIGNAL_OWNER } from '../shared/content.ts'
+import { VALVES } from '../shared/types.ts'
+import { Hab } from '../server/game.ts'
+import type { ClientAction, CrewId, SignalId, StationId } from '../shared/types.ts'
+
+type Internals = {
+  tick: (dt: number) => void
+  air: number
+  power: number
+  leaks: Record<'port' | 'starboard', boolean>
+  valves: Record<'port' | 'starboard', 'open' | 'sealed'>
+  pumpOn: boolean
+  shieldsOn: boolean
+  rocksBroken: boolean
+  stormEta: number | null
+  stormActive: boolean
+  runawayUntil: number
+  elapsed: number
+}
+
+function makeHab(seed: number) {
+  const hab = new Hab(
+    'TEST',
+    {
+      id: 'vega',
+      name: 'Vega',
+      role: null,
+      ready: false,
+      connected: true,
+      host: true,
+      socketId: 'sock-vega',
+    },
+    seed,
+  )
+  hab.claim('vega', 'vega')
+  hab.setReady('vega', true)
+  for (const role of ['engineer', 'pilot', 'sparks'] as StationId[]) {
+    hab.addPlayer({
+      id: role,
+      name: role,
+      role: null,
+      ready: false,
+      connected: true,
+      host: false,
+      socketId: `sock-${role}`,
+    })
+    hab.claim(role, role)
+    hab.setReady(role, true)
+  }
+  hab.listener = { onView: () => {}, onSpeak: () => {} }
+  const err = hab.start('vega', true)
+  if (err) throw new Error(`start failed: ${err}`)
+  hab.stopClock()
+  return { hab, inner: hab as unknown as Internals }
+}
+
+/**
+ * What the crew collectively want Vega to do, most urgent first. A list rather
+ * than one answer so that when a call is skipped the table falls through to the
+ * next thing worth saying, the way real players would.
+ */
+function desired(inner: Internals, _lead: number): SignalId[] {
+  const leaking = VALVES.filter((v) => inner.leaks[v] && inner.valves[v] !== 'sealed')
+  const runaway = inner.elapsed < inner.runawayUntil
+  const eta = inner.stormEta
+  const want: SignalId[] = []
+
+  if (runaway && inner.pumpOn) want.push('pump-off')
+  if (!inner.shieldsOn && !inner.rocksBroken && (eta != null || inner.stormActive)) {
+    want.push('shields-on')
+    want.push('shoot')
+  }
+  if (inner.stormActive && inner.pumpOn) want.push('pump-off')
+  if (leaking.length) want.push(leaking[0] === 'port' ? 'seal-port' : 'seal-starboard')
+  if (!inner.stormActive && !runaway && !inner.pumpOn && inner.air < 72) want.push('pump-on')
+  return want
+}
+
+interface Sim {
+  label: string
+  lag: number
+  vegaLag: number
+  /** Crew members who are absent or silent this run. */
+  missing: CrewId[]
+  /** Individual calls nobody makes, for testing whether one call is load-bearing. */
+  skip?: SignalId[]
+  /**
+   * Vega playing her own gauge instead of only obeying signals. She can see the
+   * air number and the overpressure hatching, so a sharp player really would do
+   * this. If she can carry the round alone the whole premise is dead.
+   */
+  vegaSolo?: boolean
+}
+
+/**
+ * What Vega can work out with no help at all: the air number, and nothing else.
+ * `obeyedPumpAt` keeps her from undoing an order she just followed — a real
+ * player trusts a signal for a few seconds before overriding it.
+ */
+function vegaSelfDrive(hab: Hab, inner: Internals, obeyedPumpAt: number | null) {
+  const air = inner.air
+  const trusting = obeyedPumpAt != null && inner.elapsed - obeyedPumpAt < 10
+  if (air > 96 && inner.pumpOn) hab.applyAction('vega', { type: 'pump', on: false })
+  else if (air < 58 && !inner.pumpOn && !trusting) hab.applyAction('vega', { type: 'pump', on: true })
+  // Air bleeding with the pump already running means a leak, but not which one.
+  // Guessing is all she has, so let her guess — and pay for a wrong guess.
+  if (air < 40) {
+    const open = VALVES.filter((v) => inner.valves[v] === 'open')
+    if (open.length > 1) hab.applyAction('vega', { type: 'valve', valve: open[0], sealed: true })
+  }
+}
+
+function run(sim: Sim, seed: number) {
+  const { hab, inner } = makeHab(seed)
+  const act = (who: string, a: ClientAction) => hab.applyAction(who, a)
+
+  let intent: SignalId | null = null
+  let noticedAt: number | null = null
+  let vegaTodo: SignalId | null = null
+  let vegaSawAt: number | null = null
+  let obeyedPumpAt: number | null = null
+  let minAir = 999
+  const steps = Math.ceil((MISSION_SECONDS + 1) / 0.1)
+
+  for (let i = 0; i < steps; i++) {
+    inner.tick(0.1)
+    if (hab.phase !== 'play') break
+    const t = inner.elapsed
+
+    const want =
+      desired(inner, 1.5 + sim.lag + sim.vegaLag).find(
+        (s) => !sim.missing.includes(SIGNAL_OWNER[s]) && !sim.skip?.includes(s),
+      ) ?? null
+    if (want && want !== intent) {
+      intent = want
+      noticedAt = t
+    }
+    if (intent && noticedAt != null && t - noticedAt >= sim.lag) {
+      const err = act(SIGNAL_OWNER[intent], { type: 'signal', signal: intent })
+      if (!err) intent = null
+    }
+
+    const view = hab.viewFor('vega')!
+    const fresh = view.signals.filter((s) => s.fresh).at(-1)
+    if (fresh && fresh.signal !== vegaTodo) {
+      vegaTodo = fresh.signal
+      vegaSawAt = t
+    }
+    if (vegaTodo && vegaSawAt != null && t - vegaSawAt >= sim.vegaLag) {
+      switch (vegaTodo) {
+        case 'pump-off':
+          act('vega', { type: 'pump', on: false })
+          obeyedPumpAt = t
+          break
+        case 'pump-on':
+          act('vega', { type: 'pump', on: true })
+          obeyedPumpAt = t
+          break
+        case 'seal-port':
+          act('vega', { type: 'valve', valve: 'port', sealed: true })
+          break
+        case 'seal-starboard':
+          act('vega', { type: 'valve', valve: 'starboard', sealed: true })
+          break
+        case 'shields-on':
+          act('vega', { type: 'shields', on: true })
+          break
+        case 'shoot':
+          act('vega', { type: 'shoot' })
+          break
+      }
+      vegaTodo = null
+    }
+
+    if (sim.vegaSolo) vegaSelfDrive(hab, inner, obeyedPumpAt)
+
+    minAir = Math.min(minAir, inner.air)
+  }
+
+  const view = hab.viewFor('vega')!
+  return {
+    outcome: view.outcome,
+    air: Math.round(inner.air),
+    minAir: Math.round(minAir),
+    reason: view.loseReason,
+  }
+}
+
+const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8]
+
+function report(sim: Sim) {
+  const results = SEEDS.map((s) => run(sim, s))
+  const won = results.filter((r) => r.outcome === 'won').length
+  const floor = Math.min(...results.map((r) => r.minAir))
+  console.log(
+    `${sim.label.padEnd(30)} won ${won}/${SEEDS.length}   air floor ${String(floor).padStart(3)}`,
+  )
+  return won
+}
+
+console.log('=== the one path ===')
+const sharp = report({ label: 'all three, sharp (1.2s)', lag: 1.2, vegaLag: 0.7, missing: [] })
+const normal = report({ label: 'all three, normal (2.2s)', lag: 2.2, vegaLag: 1.3, missing: [] })
+const slow = report({ label: 'all three, slow (3.6s)', lag: 3.6, vegaLag: 2.2, missing: [] })
+const sloppy = report({ label: 'all three, sloppy (5.0s)', lag: 5, vegaLag: 3, missing: [] })
+
+// The realistic good-table case: she obeys the pad AND works her own gauge.
+const helped = report({
+  label: 'all three + Vega on her gauge',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  vegaSolo: true,
+})
+
+console.log('\n=== every seat is load-bearing ===')
+const noRook = report({
+  label: 'Rook silent (no pump calls)',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['engineer'],
+})
+const noIdris = report({
+  label: 'Idris silent (no storm calls)',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['pilot'],
+})
+const noChen = report({
+  label: 'Chen silent (no valve calls)',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['sparks'],
+})
+const nobody = report({
+  label: 'nobody signals at all',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['engineer', 'pilot', 'sparks'],
+})
+const solo = report({
+  label: 'Vega alone, playing her gauge',
+  lag: 1.2,
+  vegaLag: 0.7,
+  missing: ['engineer', 'pilot', 'sparks'],
+  vegaSolo: true,
+})
+console.log('\n=== storm is a choice, pump-off is not ===')
+const onlyShoot = report({
+  label: 'only SHOOT (no shields)',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['shields-on'],
+})
+const onlyShields = report({
+  label: 'only SHIELDS (no shoot)',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['shoot'],
+})
+const noStorm = report({
+  label: 'storm never answered',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['shields-on', 'shoot'],
+})
+const noPumpOff = report({
+  label: 'pump-off never called',
+  lag: 2.2,
+  vegaLag: 1.3,
+  missing: [],
+  skip: ['pump-off'],
+})
+
+const problems: string[] = []
+if (sharp < SEEDS.length) problems.push('a sharp crew running the correct sequence must always win')
+if (normal < SEEDS.length - 1) problems.push('a normal crew should usually win')
+if (slow < SEEDS.length - 2) problems.push('a slow crew should still usually win')
+if (sloppy >= SEEDS.length) problems.push('a sloppy crew must sometimes lose — there has to be a ceiling')
+// Initiative must never be punished. If she does worse by thinking for herself,
+// the most engaged player at the table is the one breaking the round.
+if (helped < normal) problems.push('a Vega who works her own gauge must not do worse than one who only obeys')
+if (noRook > 0) problems.push('Rook is not load-bearing')
+if (noIdris > 0) problems.push('Idris is not load-bearing')
+if (noChen > 0) problems.push('Chen is not load-bearing')
+if (nobody > 0) problems.push('silence must never win')
+if (solo > 0) problems.push('a clever Vega must not be able to carry the round alone')
+if (onlyShoot < SEEDS.length - 1) problems.push('shooting the rocks must be enough without shields')
+if (onlyShields < SEEDS.length - 1) problems.push('shields must be enough without shooting')
+if (noStorm > 0) problems.push('the storm must be answered')
+if (noPumpOff > 0) problems.push('the pump-off call is decoration')
+
+if (problems.length) {
+  console.log('\nBALANCE NOT READY:')
+  for (const p of problems) console.log(`  - ${p}`)
+  process.exit(1)
+}
+console.log('\nbalance OK: one path, four seats on it, and not one spare call')

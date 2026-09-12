@@ -1,0 +1,1161 @@
+:root {
+  --bg: #0d0906;
+  --panel: #17100b;
+  --panel-2: #1f1610;
+  --line: #3a2a1c;
+  --ink: #f6ead8;
+  --dim: #9b8168;
+  --air: #3ee0ff;
+  --power: #ffb020;
+  --storm: #ff6a22;
+  --alarm: #5cff9d;
+  --danger: #ff3b1f;
+  --ok: #6de08a;
+
+  color-scheme: dark;
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+}
+
+#root {
+  min-height: 100svh;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+input {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---------- layout ---------- */
+
+.app {
+  min-height: 100svh;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 12px 14px calc(18px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.app.fit {
+  height: 100svh;
+  min-height: 100svh;
+  max-height: 100svh;
+  overflow: hidden;
+  gap: 8px;
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom));
+}
+
+.app.fit .ctl {
+  min-height: 64px;
+  padding: 10px 8px;
+}
+
+.app.fit .ctl.shoot {
+  min-height: 68px;
+}
+
+.app.fit .ctl.shoot .state {
+  font-size: 20px;
+}
+
+.app.fit .recipe {
+  padding: 6px 12px 6px 28px;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+/* Shared oxygen + power — every seated phone. */
+.vitals {
+  display: grid;
+  gap: 6px;
+}
+
+.vital-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.vital-head b {
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.vital-track {
+  height: 8px;
+  background: #100b08;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+  position: relative;
+}
+
+.fill-air,
+.fill-power {
+  display: block;
+  height: 100%;
+  transition: width 0.12s linear;
+}
+
+.fill-air {
+  background: var(--air);
+}
+
+.fill-air.low {
+  background: var(--power);
+}
+
+.fill-air.critical,
+.fill-air.over {
+  background: var(--danger);
+}
+
+.fill-power {
+  background: var(--power);
+}
+
+.readout.slim {
+  padding: 8px 10px 10px;
+}
+
+.readout.slim .value.compact {
+  font-size: clamp(28px, 11vw, 48px);
+  margin: 2px 0 0;
+}
+
+.scope-slim {
+  max-height: 88px;
+  overflow: hidden;
+  margin: 4px 0 2px;
+}
+
+.scope-slim svg {
+  display: block;
+  width: 100%;
+  height: 88px;
+}
+
+.pad-wrap {
+  display: grid;
+  gap: 6px;
+}
+
+.app.fit .mix {
+  margin-top: 0;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 8px;
+}
+
+.who {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tag {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.clock.urgent {
+  color: var(--danger);
+}
+
+.grow {
+  flex: 1;
+}
+
+/* ---------- conflicting orders ---------- */
+
+.demand {
+  border: 2px solid var(--danger);
+  background: #2a0c08;
+  padding: 10px 12px;
+  text-align: center;
+  animation: pulse 0.7s steps(2, end) infinite;
+}
+
+.demand.warn {
+  border-color: var(--power);
+  background: #2a1a08;
+  animation: none;
+}
+
+.demand.fight .yell {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  line-height: 1.25;
+  color: #ffe8e2;
+}
+
+.demand.warn .yell {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--power);
+}
+
+.demand .gripe {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #ffb8a8;
+  margin-bottom: 4px;
+}
+
+/* ---------- big readouts ---------- */
+
+.readout {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 18px 16px 20px;
+  text-align: center;
+}
+
+.readout .label {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.readout .value {
+  font-size: clamp(64px, 26vw, 132px);
+  line-height: 0.9;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin: 6px 0 2px;
+}
+
+.readout .unit {
+  font-size: 0.36em;
+  vertical-align: super;
+  opacity: 0.75;
+}
+
+.readout .sub {
+  font-size: 13px;
+  color: var(--dim);
+}
+
+.v-air {
+  color: var(--air);
+}
+.v-power {
+  color: var(--power);
+}
+.v-storm {
+  color: var(--storm);
+}
+.v-danger {
+  color: var(--danger);
+}
+.v-ok {
+  color: var(--ok);
+}
+
+.bar {
+  height: 12px;
+  background: #100b08;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 12px;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  transition: width 0.12s linear;
+}
+
+/* Overpressure marker so Vega learns that high is not good. */
+.airtrack {
+  position: relative;
+}
+
+.airtrack .redzone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 8%;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 59, 31, 0.55) 0 4px,
+    transparent 4px 8px
+  );
+  pointer-events: none;
+}
+
+/* ---------- controls ---------- */
+
+.controls {
+  display: grid;
+  gap: 10px;
+}
+
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.ctl {
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 14px 12px;
+  min-height: 76px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+  transition: transform 0.06s ease;
+}
+
+.ctl:active {
+  transform: scale(0.97);
+}
+
+.ctl .name {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.ctl .state {
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+.ctl.on {
+  border-color: var(--ok);
+  background: #14210f;
+}
+.ctl.on .state {
+  color: var(--ok);
+}
+
+.ctl.off {
+  border-color: #5a4126;
+}
+.ctl.off .state {
+  color: var(--dim);
+}
+
+.ctl.hot {
+  border-color: var(--danger);
+  background: #240d09;
+}
+
+.ctl.aimed {
+  box-shadow: 0 0 0 3px var(--air);
+  animation: pulse 0.55s steps(2, end) infinite;
+}
+.ctl.hot .state {
+  color: var(--danger);
+}
+
+.ctl.shoot {
+  min-height: 88px;
+  border-color: var(--storm);
+}
+
+.ctl.shoot .state {
+  color: var(--storm);
+  font-size: 26px;
+}
+
+.ctl.shoot.held {
+  border-color: var(--ok);
+  background: #14210f;
+}
+
+.ctl:disabled {
+  opacity: 0.45;
+}
+
+/* ---------- signal pad (the only line into Vega) ---------- */
+
+.pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.sig {
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 12px 6px;
+  min-height: 84px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.sig .mark {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.sig .name {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  font-weight: 700;
+}
+
+/* Two calls per console instead of six, so they get the room. */
+.pad.owned {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.pad.owned .sig {
+  min-height: 0;
+  padding: 8px;
+}
+
+.sig .thumb {
+  width: 100%;
+  aspect-ratio: 1.2;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+
+.pad.owned .sig .name {
+  font-size: 12px;
+}
+
+.sig .why {
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+  text-align: center;
+}
+
+.sig.hot {
+  border-color: var(--storm);
+  box-shadow: 0 0 0 2px var(--storm);
+}
+
+.sig:active {
+  transform: scale(0.96);
+}
+
+.recipe {
+  margin: 0;
+  padding: 8px 14px 8px 32px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  line-height: 1.6;
+}
+
+.recipe li.now {
+  color: var(--storm);
+  font-weight: 800;
+}
+
+.recipe li.done {
+  color: var(--dim);
+  text-decoration: line-through;
+}
+
+.sig:disabled {
+  opacity: 0.32;
+}
+
+.cooldown {
+  height: 6px;
+  background: #100b08;
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.cooldown > i {
+  display: block;
+  height: 100%;
+  background: var(--danger);
+  transition: width 0.1s linear;
+}
+
+.ackline {
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dim);
+  border: 1px solid var(--line);
+  padding: 7px 8px;
+  border-radius: 3px;
+}
+
+.ackline.lit {
+  color: #08221a;
+  background: var(--ok);
+  border-color: var(--ok);
+  font-weight: 700;
+}
+
+/* ---------- Vega's inbox: named asks, stacked by priority ---------- */
+
+.inbox {
+  display: grid;
+  gap: 8px;
+}
+
+.incoming {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 10px;
+  align-items: center;
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  padding: 8px;
+  animation: incoming-in 0.28s cubic-bezier(0.12, 0.82, 0.22, 1.05) both;
+}
+
+.incoming.pri-critical {
+  border-color: var(--danger);
+  background: #2a0c08;
+}
+
+.incoming.pri-high {
+  border-color: var(--storm);
+  background: #2a1408;
+}
+
+.incoming.pri-medium {
+  border-color: var(--air);
+  background: #08222b;
+}
+
+.incoming-thumb {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 3px;
+  border: 1px solid var(--line);
+}
+
+.incoming-copy .who {
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.incoming-copy .what {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  line-height: 1.25;
+}
+
+.pri {
+  display: inline-block;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+
+.pri-critical {
+  color: var(--danger);
+}
+
+.pri-high {
+  color: var(--storm);
+}
+
+.pri-medium {
+  color: var(--air);
+}
+
+.ctl .o2 {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+
+.ctl .o2.up {
+  color: var(--ok);
+}
+
+.ctl .o2.down {
+  color: var(--danger);
+}
+
+.ctl .o2.flat {
+  color: var(--dim);
+}
+
+.mix {
+  margin-top: 8px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--dim);
+  line-height: 1.45;
+}
+
+@keyframes incoming-in {
+  0% {
+    transform: translateY(-12px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes flashbox {
+  50% {
+    background: #0e3c4a;
+    border-color: #bff4ff;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    background: #3a1a0c;
+  }
+}
+
+.silent-note {
+  border: 1px dashed var(--line);
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--dim);
+  text-align: center;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- logs ---------- */
+
+.log {
+  border: 1px solid var(--line);
+  background: #0a0705;
+  border-radius: 4px;
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  min-height: 180px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 2px;
+  overflow: hidden;
+}
+
+/* Chen's log is the whole screen, so it takes the slack instead of a spacer. */
+.readout.fill {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.readout.fill .log {
+  flex: 1;
+}
+
+.log div {
+  color: var(--alarm);
+}
+
+.log div.old {
+  opacity: 0.4;
+}
+
+.log div.fresh {
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ---------- cinematic backdrop ---------- */
+
+/*
+ * The plate sits on its own layer under a separate vignette layer rather than
+ * going into one background with a gradient over it, so the two can be tuned
+ * against each other without the gradient swallowing the photo.
+ */
+.stage {
+  position: relative;
+  isolation: isolate;
+}
+
+.stage::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: var(--plate);
+  background-size: cover;
+  background-position: center;
+  /* The plate is properly exposed now, so this only warms it rather than
+     trying to rescue it. */
+  filter: saturate(1.1) contrast(1.02);
+  opacity: 0.72;
+  z-index: -2;
+  pointer-events: none;
+}
+
+/* Vignette so overlaid text stays legible against the brightened plate. */
+.stage::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(125% 85% at 50% 40%, transparent 0%, rgba(13, 9, 6, 0.66) 88%),
+    linear-gradient(rgba(13, 9, 6, 0.42), rgba(13, 9, 6, 0.08) 38%, rgba(13, 9, 6, 0.88));
+  z-index: -1;
+  pointer-events: none;
+}
+
+/*
+ * Faint CRT scanlines over everything, for the console feel. This lives on the
+ * body and not on .stage because an element only has one ::before: when both
+ * rules targeted the same one, this shorthand `background` wiped out the art
+ * plate above and the screen rendered flat black.
+ */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.028) 0 1px,
+    transparent 1px 3px
+  );
+  z-index: 9;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+/* ---------- lobby / home ---------- */
+
+.hero {
+  text-align: center;
+  padding: 8px 0 0;
+}
+
+.hero h1 {
+  font-size: clamp(34px, 12vw, 54px);
+  letter-spacing: -0.02em;
+  margin: 4px 0 6px;
+  font-weight: 800;
+}
+
+.hero .pitch {
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--ink);
+  margin: 0 auto 4px;
+  max-width: 32ch;
+}
+
+.hero .pitch em {
+  color: var(--air);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.card {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.field label {
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 6px;
+}
+
+.field input {
+  width: 100%;
+  background: #0a0705;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 14px;
+  letter-spacing: 0.1em;
+}
+
+.field input:focus {
+  outline: 2px solid var(--air);
+  outline-offset: -1px;
+}
+
+.btn {
+  border: 2px solid var(--ink);
+  border-radius: 3px;
+  padding: 15px 14px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 13px;
+  width: 100%;
+}
+
+.btn.primary {
+  background: var(--ink);
+  color: #12100c;
+}
+
+.btn.ghost {
+  border-color: var(--line);
+  color: var(--dim);
+}
+
+.btn:disabled {
+  opacity: 0.4;
+}
+
+.code {
+  font-size: clamp(44px, 18vw, 76px);
+  font-weight: 800;
+  letter-spacing: 0.24em;
+  text-align: center;
+  color: var(--air);
+}
+
+.seats {
+  display: grid;
+  gap: 8px;
+}
+
+.seat {
+  border: 2px solid var(--line);
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 12px 14px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  align-items: center;
+  text-align: left;
+}
+
+.seat .badge {
+  grid-row: span 2;
+  width: 44px;
+  height: 44px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.seat .name {
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.seat .desc {
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.4;
+}
+
+.seat.mine {
+  border-color: var(--ink);
+  background: #241a12;
+}
+
+.seat.taken {
+  opacity: 0.42;
+}
+
+.seat.vega {
+  color: var(--air);
+}
+.seat.engineer {
+  color: var(--power);
+}
+.seat.pilot {
+  color: var(--storm);
+}
+.seat.sparks {
+  color: var(--alarm);
+}
+.seat.board {
+  color: var(--dim);
+}
+
+.roster {
+  font-size: 13px;
+  display: grid;
+  gap: 4px;
+}
+
+.roster .row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dim);
+}
+
+.roster .row b {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.notice {
+  border: 1px solid var(--danger);
+  background: #2a0f0a;
+  border-radius: 3px;
+  padding: 10px 12px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.brief {
+  border-left: 3px solid var(--air);
+  padding: 8px 0 8px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.brief .honor {
+  color: var(--danger);
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+/* ---------- debrief ---------- */
+
+.verdict {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.verdict .head {
+  font-size: clamp(30px, 11vw, 46px);
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+.verdict .why {
+  color: var(--dim);
+  margin-top: 10px;
+  font-size: 15px;
+}
+
+.recap {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 12px 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.recap-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  text-align: center;
+}
+
+.recap-grid b {
+  display: block;
+  font-size: 22px;
+  margin-top: 2px;
+}
+
+.recap-calls,
+.recap-miss {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.recap-calls .acked {
+  color: var(--ok);
+}
+
+.recap-miss {
+  color: var(--danger);
+}
+
+.how {
+  border-left: 3px solid var(--storm);
+  padding: 4px 0 4px 12px;
+}
+
+.how ol {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--dim);
+}
+
+.count-shell {
+  justify-content: center;
+  text-align: center;
+  min-height: 100svh;
+}
+
+.count-num {
+  font-size: clamp(96px, 38vw, 180px);
+  font-weight: 800;
+  line-height: 0.9;
+  color: var(--storm);
+  text-shadow: 0 0 40px rgba(255, 106, 34, 0.45);
+}
+
+/* ---------- spectator board ---------- */
+
+.board {
+  max-width: 1100px;
+}
+
+.board .strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.board .readout .value {
+  font-size: clamp(40px, 8vw, 84px);
+}
+
+@media (min-width: 900px) {
+  .board .log {
+    min-height: 260px;
+    font-size: 15px;
+  }
+}
+
+/* Vega's whole screen reacts, because sound cannot reach her. */
+.strobe {
+  animation: strobe 0.34s steps(2, end) infinite;
+}
+
+@keyframes strobe {
+  50% {
+    background: #3a0f08;
+  }
+}
+
+.app.chaos-1 .demand.fight {
+  animation-duration: 0.5s;
+}
+
+.app.chaos-2 .demand.fight {
+  animation-duration: 0.32s;
+}
+
+.app.chaos-3 {
+  animation: rumble 0.16s steps(2) infinite;
+}
+
+.app.chaos-3 .demand.fight {
+  animation-duration: 0.18s;
+}
+
+.app.chaos-3 .clock {
+  color: var(--danger);
+}
+
+@keyframes rumble {
+  50% {
+    transform: translate(0.6px, -0.4px);
+  }
+}
+
+/* ---------- tutorial briefing ---------- */
+
+.coach {
+  border: 2px solid var(--air);
+  background: #08222b;
+  padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.coach .step {
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--air);
+  margin-bottom: 6px;
+}
+
+.tut-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 100svh;
+}
+
+.tut-shell .app {
+  min-height: 0;
+  flex: 1;
+}
